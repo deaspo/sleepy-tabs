@@ -277,20 +277,6 @@ function PopupApp(): JSX.Element {
         </button>
         <button
           type="button"
-          onClick={() => handleAction('reload')}
-          style={{
-            padding: '8px 12px',
-            borderRadius: 6,
-            border: '1px solid #1a73e8',
-            background: '#fff',
-            color: '#1a73e8',
-            cursor: 'pointer'
-          }}
-        >
-          Reload tab
-        </button>
-        <button
-          type="button"
           onClick={handleSleepAll}
           style={{
             padding: '8px 12px',
