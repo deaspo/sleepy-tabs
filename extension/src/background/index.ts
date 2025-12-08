@@ -129,6 +129,12 @@ chrome.runtime.onMessage.addListener((message: RuntimeMessage, sender, sendRespo
     return true;
   }
 
+  if (message.type === 'sleep-all-tabs') {
+    const excludeActive = message.excludeActive !== false;
+    void manager.sleepAllTabs(excludeActive).then(() => sendResponse({ success: true }));
+    return true;
+  }
+
   if (message.type === 'reminder-decision') {
     const reminder = message as ReminderDecisionMessage;
     void manager

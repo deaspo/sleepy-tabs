@@ -126,6 +126,11 @@ export interface TabStateUpdatedMessage {
   state: TabState;
 }
 
+export interface SleepAllTabsMessage {
+  type: 'sleep-all-tabs';
+  excludeActive?: boolean;
+}
+
 export type RuntimeMessage =
   | SettingsUpdateMessage
   | SettingsRequestMessage
@@ -136,4 +141,5 @@ export type RuntimeMessage =
   | ReminderDecisionMessage
   | ManualActionMessage
   | ToggleIgnoreMessage
-  | TabStateUpdatedMessage;
+  | TabStateUpdatedMessage
+  | SleepAllTabsMessage;

@@ -252,6 +252,39 @@ export class SleepManager {
     await this.executeAction(tabId, action, reason, undefined, false);
   }
 
+  async sleepAllTabs(excludeActive = true): Promise<void> {
+    const [tabs, state] = await Promise.all([
+      chrome.tabs.query({ discarded: false }),
+      getTabState()
+    ]);
+
+    let activeTabId: number | undefined;
+    if (excludeActive) {
+      const activeTab = tabs.find((tab) => tab.active && typeof tab.id === 'number');
+      activeTabId = activeTab?.id;
+    }
+
+    for (const tab of tabs) {
+      if (typeof tab.id !== 'number') {
+        continue;
+      }
+      if (excludeActive && activeTabId === tab.id) {
+        continue;
+      }
+
+      const tabState = state[tab.id];
+      if (!tabState || tabState.ignored) {
+        continue;
+      }
+
+      try {
+        await this.handleManualAction(tab.id, 'sleep');
+      } catch (error) {
+        console.error('Failed to put tab to sleep', error);
+      }
+    }
+  }
+
   async updateConsent(consent: ConsentState): Promise<void> {
     this.consent = consent;
     await chrome.storage.local.set({ 'sleepyTabs.consent': consent });

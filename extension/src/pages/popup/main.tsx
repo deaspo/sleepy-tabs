@@ -87,6 +87,17 @@ function PopupApp(): JSX.Element {
     });
   };
 
+  const handleSleepAll = () => {
+    chrome.runtime.sendMessage({ type: 'sleep-all-tabs', excludeActive: true }, () => {
+      if (chrome.runtime.lastError) {
+        setStatus('Failed to sleep tabs');
+      } else {
+        setStatus('Sleeping other tabs');
+      }
+      window.setTimeout(() => setStatus(''), 2000);
+    });
+  };
+
   if (!state) {
     return <div style={{ padding: 16 }}>Loading...</div>;
   }
@@ -130,6 +141,20 @@ function PopupApp(): JSX.Element {
           }}
         >
           Reload tab
+        </button>
+        <button
+          type="button"
+          onClick={handleSleepAll}
+          style={{
+            padding: '8px 12px',
+            borderRadius: 6,
+            border: 'none',
+            background: '#0b8043',
+            color: '#fff',
+            cursor: 'pointer'
+          }}
+        >
+          Sleep all tabs
         </button>
       </div>
 
