@@ -252,13 +252,13 @@ function PopupApp(): JSX.Element {
       {/* <p style={{ margin: '0 0 12px 0', fontSize: 12, color: '#555', wordBreak: 'break-word' }}>
         {state.url}
       </p> */}
-      <p style={{ margin: '0 0 16px 0', fontSize: 13 }}>
+      {/* <p style={{ margin: '0 0 16px 0', fontSize: 13 }}>
         Estimated memory usage: {memoryUsageText}
       </p>
       <p style={{ margin: '-8px 0 16px 0', fontSize: 11, color: '#5f6368' }}>
         {memorySourceText}
         {memoryCapturedHint}
-      </p>
+      </p> */}
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
         <button
