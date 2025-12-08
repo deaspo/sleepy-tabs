@@ -1,5 +1,5 @@
-import { NativeMessagingHost } from './nativeMessaging';
-import { TabMonitor } from './tabMonitor';
+import { NativeMessagingHost } from './nativeMessaging.js';
+import { TabMonitor } from './tabMonitor.js';
 import type { CompanionOutboundMessage } from './types';
 
 let host: NativeMessagingHost | null = null;

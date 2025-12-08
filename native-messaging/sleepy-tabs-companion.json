@@ -1,9 +1,9 @@
 {
   "name": "com.sleepytabs.companion",
   "description": "Sleepy Tabs Guardian Native Messaging Host",
-  "path": "/ABSOLUTE/PATH/TO/sleepy-tabs-companion",
+  "path": "/home/poly/sleepy-tabs-ext/native-messaging/run-companion.sh",
   "type": "stdio",
   "allowed_origins": [
-    "chrome-extension://REPLACE_WITH_EXTENSION_ID/"
+    "chrome-extension://cagnkfgoijplkkccilmkdmhccbbjdhcp/"
   ]
 }

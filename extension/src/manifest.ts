@@ -37,7 +37,7 @@ const manifest = defineManifest({
   ],
   web_accessible_resources: [
     {
-      resources: ['src/pages/reminder/index.html'],
+      resources: ['src/pages/reminder/index.html', 'src/pages/consent/index.html'],
       matches: ['<all_urls>']
     }
   ],
