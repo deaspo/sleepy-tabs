@@ -6,11 +6,13 @@ Introducing Sleepy Tabs Guardian -- a Chrome/Chromium extension that keeps your 
 
 - Remote work made our browsers the new operating system. Idle tabs still drain laptops and distract focus.
 - Existing "tab snoozers" rarely expose telemetry or offer guardrails for mission-critical pages.
+- We all forget about tabs buried in another window, and Chrome's built-in memory saver picks its own timeout with no way to tune it.
 
 ## What we built
 
 - Auto-sleeps inactive tabs after 5 minutes (configurable) with a reminder modal and manual override.
 - Reloads tabs exceeding 250 MB, powered by a Playwright companion that taps the Chrome DevTools Protocol.
+- One-click "Sleep all tabs" control that clears the decks instantly without opening every tab.
 - IndexedDB-backed dashboard that highlights critical tabs, recent actions, and resource trends.
 - Consent-first onboarding plus per-tab ignore toggles for sensitive workloads.
 
