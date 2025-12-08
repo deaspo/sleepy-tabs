@@ -79,7 +79,9 @@ function DashboardApp(): JSX.Element {
   );
 
   return (
-    <div style={{ fontFamily: 'system-ui, sans-serif', padding: '24px', maxWidth: 960, margin: '0 auto' }}>
+    <div
+      style={{ fontFamily: 'system-ui, sans-serif', padding: '24px', maxWidth: 960, minWidth: 320, margin: '0 auto' }}
+    >
       <header style={{ marginBottom: 24 }}>
         <h1 style={{ margin: 0 }}>Sleepy Tabs Dashboard</h1>
         <p style={{ color: '#555' }}>
@@ -143,7 +145,6 @@ function DashboardApp(): JSX.Element {
                 <th style={{ padding: '8px 12px' }}>Reason</th>
                 {/* <th style={{ padding: '8px 12px' }}>Memory (MB)</th> */}
                 <th style={{ padding: '8px 12px' }}>Title</th>
-                <th style={{ padding: '8px 12px' }}>URL</th>
               </tr>
             </thead>
             <tbody>
@@ -160,7 +161,6 @@ function DashboardApp(): JSX.Element {
                     <div style={{ fontSize: 11, color: '#5f6368' }}>{formatMemoryDetail(record)}</div>
                   </td> */}
                   <td style={{ padding: '8px 12px' }}>{record.title ?? 'Untitled'}</td>
-                  <td style={{ padding: '8px 12px', wordBreak: 'break-word' }}>{record.url}</td>
                 </tr>
               ))}
             </tbody>
