@@ -65,73 +65,37 @@ Verify remote debugging is live by visiting `http://localhost:9222` in another t
 
 ## 5. Register the Native Messaging Host
 
-Chrome and Edge both need two things: a manifest that describes the host and a registry entry that tells the browser where to find that manifest.
+We have provided a PowerShell script to automate the registration process. This script will:
+1. Create the Windows launcher (`run-companion.cmd`).
+2. Generate the manifest file with the correct absolute paths.
+3. Register the host in the Windows Registry for both Chrome and Edge.
 
-1. **Create a Windows launcher for the companion.**
-
-   ```powershell
-   cd C:\code\sleepy-tabs-ext\native-messaging
-   @'
-   @echo off
-   setlocal
-   set "NODE_EXE=C:\Program Files\nodejs\node.exe"
-   "%NODE_EXE%" "C:\code\sleepy-tabs-ext\companion\dist\index.js" %*
-   endlocal
-   '@ | Out-File -FilePath run-companion.cmd -Encoding ASCII
-   ```
-
-   - Update `NODE_EXE` if Node lives in a different directory.
-   - Keep the script in the repo so the manifest can reference a stable path.
-
-2. **Edit `native-messaging\sleepy-tabs-companion.json`.** Replace the `path` with the script above and set the extension ID after you load the extension in your target browser:
-
-   ```json
-   {
-     "name": "com.sleepytabs.companion",
-     "description": "Sleepy Tabs Guardian Native Messaging Host",
-     "path": "C:\\code\\sleepy-tabs-ext\\native-messaging\\run-companion.cmd",
-     "type": "stdio",
-     "allowed_origins": [
-       "chrome-extension://REPLACE_WITH_EXTENSION_ID/"
-     ]
-   }
-   ```
-
-3. **Copy the manifest to the browser’s host directory.**
-
-   ```powershell
-   $chromeHostDir = "$env:LOCALAPPDATA\Google\Chrome\User Data\NativeMessagingHosts"
-   New-Item -Path $chromeHostDir -ItemType Directory -Force | Out-Null
-   Copy-Item -Path C:\code\sleepy-tabs-ext\native-messaging\sleepy-tabs-companion.json -Destination "$chromeHostDir\com.sleepytabs.companion.json" -Force
-
-   $edgeHostDir = "$env:LOCALAPPDATA\Microsoft\Edge\User Data\NativeMessagingHosts"
-   New-Item -Path $edgeHostDir -ItemType Directory -Force | Out-Null
-   Copy-Item -Path C:\code\sleepy-tabs-ext\native-messaging\sleepy-tabs-companion.json -Destination "$edgeHostDir\com.sleepytabs.companion.json" -Force
-   ```
-
-4. **Register the manifest in the Windows registry.** Save the snippet below as `register-sleepy-tabs-host.reg`, update the paths if needed, then double-click it (or import via `regedit`).
-
-   ```reg
-   Windows Registry Editor Version 5.00
-
-   [HKEY_CURRENT_USER\Software\Google\Chrome\NativeMessagingHosts\com.sleepytabs.companion]
-   @="C:\\Users\\<YourUser>\\AppData\\Local\\Google\\Chrome\\User Data\\NativeMessagingHosts\\com.sleepytabs.companion.json"
-
-   [HKEY_CURRENT_USER\Software\Microsoft\Edge\NativeMessagingHosts\com.sleepytabs.companion]
-   @="C:\\Users\\<YourUser>\\AppData\\Local\\Microsoft\\Edge\\User Data\\NativeMessagingHosts\\com.sleepytabs.companion.json"
-   ```
-
-   Replace `<YourUser>` with your Windows username. Each browser reads its respective entry on launch.
-
-5. Restart your browser after updating manifests or registry entries.
-
-## 6. Start the Companion Service
+Run the following command in PowerShell:
 
 ```powershell
-cd C:\code\sleepy-tabs-ext
-$env:CDP_ENDPOINT = "http://127.0.0.1:9222"
-npm run start -w companion
+cd native-messaging
+.\setup-windows.ps1
 ```
+
+You will be prompted to enter your **Extension ID**. You can find this by:
+1. Opening `chrome://extensions` (or `edge://extensions`).
+2. Finding "Sleepy Tabs Guardian".
+3. Copying the ID (e.g., `cagnkfgoijplkkccilmkdmhccbbjdhcp`).
+
+After the script completes, **reload the extension** in your browser.
+
+## 6. Verification
+
+1. Open the extension popup.
+2. You should see "Estimated memory usage" instead of "Native companion offline".
+3. If it still says "Offline", check the extension console for errors (`Extensions > Manage Extensions > Inspect views: background page`).
+
+## 7. Troubleshooting
+
+- **"Access forbidden"**: Ensure the Extension ID in `native-messaging/sleepy-tabs-companion.json` matches your installed extension exactly.
+- **"Communication error"**: Ensure `run-companion.cmd` exists and points to the correct `node.exe` and `index.js` paths.
+- **"Native companion offline"**: The background script failed to connect. Check if the browser was launched with `--remote-debugging-port=9222`.
+
 
 Leave the terminal running; it maintains the CDP connection and forwards telemetry.
 
