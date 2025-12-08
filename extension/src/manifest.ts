@@ -25,13 +25,19 @@ const manifest = defineManifest({
     'scripting',
     'notifications',
     'sidePanel',
-    'nativeMessaging'
+    'nativeMessaging',
+    'debugger'
   ],
   host_permissions: ['<all_urls>'],
   content_scripts: [
     {
       matches: ['<all_urls>'],
       js: ['src/content/reminderModal.ts'],
+      run_at: 'document_idle'
+    },
+    {
+      matches: ['<all_urls>'],
+      js: ['src/content/memoryProbe.ts'],
       run_at: 'document_idle'
     }
   ],

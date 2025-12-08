@@ -1,13 +1,21 @@
 import { useEffect, useState, type ChangeEvent } from 'react';
 import ReactDOM from 'react-dom/client';
 
-import type { SleepAction, TabState, RuntimeMessage, NativeHostStatus } from '../../shared/types';
+import type {
+  NativeHostStatus,
+  RuntimeMessage,
+  SleepAction,
+  TabMemorySource,
+  TabState
+} from '../../shared/types';
 
 interface PopupState {
   tabId: number;
   title: string;
   url: string;
   memoryUsageMb?: number;
+  memorySource?: TabMemorySource;
+  memoryCapturedAt?: number;
   ignored: boolean;
 }
 
@@ -33,6 +41,8 @@ function PopupApp(): JSX.Element {
             title: active.title ?? 'Untitled tab',
             url: active.url ?? 'Unknown URL',
             memoryUsageMb: tabState?.memoryUsageMb,
+            memorySource: tabState?.memorySource,
+            memoryCapturedAt: tabState?.memoryCapturedAt,
             ignored: tabState?.ignored ?? false
           });
         }
@@ -54,7 +64,9 @@ function PopupApp(): JSX.Element {
         return {
           ...prev,
           ignored: message.state.ignored,
-          memoryUsageMb: message.state.memoryUsageMb
+          memoryUsageMb: message.state.memoryUsageMb,
+          memorySource: message.state.memorySource,
+          memoryCapturedAt: message.state.memoryCapturedAt
         };
       });
     };
@@ -113,7 +125,17 @@ function PopupApp(): JSX.Element {
       if (!updated) {
         return;
       }
-      setState((prev) => (prev ? { ...prev, ignored: updated.ignored, memoryUsageMb: updated.memoryUsageMb } : prev));
+      setState((prev) =>
+        prev
+          ? {
+              ...prev,
+              ignored: updated.ignored,
+              memoryUsageMb: updated.memoryUsageMb,
+              memorySource: updated.memorySource,
+              memoryCapturedAt: updated.memoryCapturedAt
+            }
+          : prev
+      );
     };
 
     chrome.storage.onChanged.addListener(listener);
@@ -196,15 +218,46 @@ function PopupApp(): JSX.Element {
     return 'collecting...';
   })();
 
+  const memorySourceText = (() => {
+    if (state.memorySource === 'companion') {
+      return 'Source: Native companion (full fidelity)';
+    }
+    if (state.memorySource === 'debugger') {
+      return 'Source: Chrome debugger sampler (JS heap only)';
+    }
+    if (state.memorySource === 'probe') {
+      return 'Source: In-tab JS heap probe (approximate)';
+    }
+    if (hostStatus === 'connecting') {
+      return 'Source: waiting for native companion...';
+    }
+    if (hostStatus === 'connected') {
+      return 'Source: awaiting first sample';
+    }
+    return 'Source: fallback samplers unavailable';
+  })();
+
+  const memoryCapturedHint = (() => {
+    if (typeof state.memoryCapturedAt !== 'number') {
+      return '';
+    }
+    const captured = new Date(state.memoryCapturedAt);
+    return ` • Captured ${captured.toLocaleTimeString()}`;
+  })();
+
   return (
     <div style={{ width: 320, padding: 16, fontFamily: 'system-ui, sans-serif' }}>
       <h1 style={{ fontSize: 18, margin: '0 0 8px 0' }}>Sleepy Tabs</h1>
       <p style={{ margin: '0 0 8px 0', fontSize: 14 }}>{state.title}</p>
-      <p style={{ margin: '0 0 12px 0', fontSize: 12, color: '#555', wordBreak: 'break-word' }}>
+      {/* <p style={{ margin: '0 0 12px 0', fontSize: 12, color: '#555', wordBreak: 'break-word' }}>
         {state.url}
-      </p>
+      </p> */}
       <p style={{ margin: '0 0 16px 0', fontSize: 13 }}>
         Estimated memory usage: {memoryUsageText}
+      </p>
+      <p style={{ margin: '-8px 0 16px 0', fontSize: 11, color: '#5f6368' }}>
+        {memorySourceText}
+        {memoryCapturedHint}
       </p>
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>

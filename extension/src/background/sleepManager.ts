@@ -15,6 +15,7 @@ import type {
   ConsentState,
   SleepAction,
   SleepSettings,
+  TabMemorySource,
   TabTelemetryRecord
 } from '../shared/types';
 
@@ -67,7 +68,9 @@ export class SleepManager {
         tabId: tab.id,
         lastActiveAt,
         ignored: existing?.ignored ?? false,
-        memoryUsageMb: existing?.memoryUsageMb
+        memoryUsageMb: existing?.memoryUsageMb,
+        memorySource: existing?.memorySource,
+        memoryCapturedAt: existing?.memoryCapturedAt
       };
       postToCompanion({ type: 'track-tab', tabId: tab.id, url: tab.url ?? undefined });
     }
@@ -81,7 +84,9 @@ export class SleepManager {
       tabId,
       lastActiveAt: Date.now(),
       ignored: existing?.ignored ?? false,
-      memoryUsageMb: existing?.memoryUsageMb
+      memoryUsageMb: existing?.memoryUsageMb,
+      memorySource: existing?.memorySource,
+      memoryCapturedAt: existing?.memoryCapturedAt
     };
     await setTabState(state);
   }
@@ -94,7 +99,9 @@ export class SleepManager {
         tabId,
         lastActiveAt: Date.now(),
         ignored,
-        memoryUsageMb: undefined
+        memoryUsageMb: undefined,
+        memorySource: undefined,
+        memoryCapturedAt: undefined
       };
     } else {
       existing.ignored = ignored;
@@ -197,6 +204,8 @@ export class SleepManager {
     memoryUsageMb: number | undefined,
     autoDueToTimeout: boolean
   ): Promise<void> {
+    const stateSnapshot = await getTabState();
+    const tabState = stateSnapshot[tabId];
     const tab = await chrome.tabs.get(tabId).catch(() => null);
     if (!tab) {
       return;
@@ -210,13 +219,18 @@ export class SleepManager {
       await chrome.tabs.reload(tabId);
     }
 
+    const resolvedMemoryUsage =
+      typeof memoryUsageMb === 'number' ? memoryUsageMb : tabState?.memoryUsageMb;
+
     await this.logTelemetry({
       tabId,
       url: tab.url ?? 'unknown',
       title: tab.title ?? 'Untitled',
       action,
       reason: autoDueToTimeout ? 'timeout' : reason,
-      memoryUsageMb,
+      memoryUsageMb: resolvedMemoryUsage,
+      memorySource: tabState?.memorySource,
+      memoryCapturedAt: tabState?.memoryCapturedAt,
       timestamp: Date.now(),
       critical: reason === 'memory'
     });
@@ -231,8 +245,12 @@ export class SleepManager {
     }
   }
 
-  async updateTabMemory(tabId: number, memoryUsageMb?: number): Promise<void> {
-    if (typeof memoryUsageMb !== 'number') {
+  async updateTabMemory(
+    tabId: number,
+    memoryUsageMb?: number,
+    source: TabMemorySource = 'companion'
+  ): Promise<void> {
+    if (typeof memoryUsageMb !== 'number' || Number.isNaN(memoryUsageMb)) {
       return;
     }
 
@@ -243,6 +261,8 @@ export class SleepManager {
     }
 
     tabState.memoryUsageMb = memoryUsageMb;
+    tabState.memorySource = source;
+    tabState.memoryCapturedAt = Date.now();
     await setTabState(state);
     void sendRuntimeMessage({
       type: 'tab-state-updated',

@@ -10,6 +10,7 @@ This guide mirrors the standard setup but calls out every Windows-specific step 
 - Node.js 20+ and npm 9+ (`node -v`, `npm -v`).
 - Google Chrome or Microsoft Edge (Manifest V3 capable). Chromium also works.
 - Ability to launch Chrome with remote debugging enabled.
+- Expect Chrome/Edge to display the standard "is debugging this browser" infobar when the fallback `chrome.debugger` sampler runs (only triggered while the companion is offline).
 
 ## 2. Clone and Install
 
@@ -66,6 +67,7 @@ Verify remote debugging is live by visiting `http://localhost:9222` in another t
 ## 5. Register the Native Messaging Host
 
 We have provided a PowerShell script to automate the registration process. This script will:
+
 1. Create the Windows launcher (`run-companion.cmd`).
 2. Generate the manifest file with the correct absolute paths.
 3. Register the host in the Windows Registry for both Chrome and Edge.
@@ -78,6 +80,7 @@ cd native-messaging
 ```
 
 You will be prompted to enter your **Extension ID**. You can find this by:
+
 1. Opening `chrome://extensions` (or `edge://extensions`).
 2. Finding "Sleepy Tabs Guardian".
 3. Copying the ID (e.g., `cagnkfgoijplkkccilmkdmhccbbjdhcp`).
@@ -89,6 +92,7 @@ After the script completes, **reload the extension** in your browser.
 1. Open the extension popup.
 2. You should see "Estimated memory usage" instead of "Native companion offline".
 3. If it still says "Offline", check the extension console for errors (`Extensions > Manage Extensions > Inspect views: background page`).
+4. Stop the companion temporarily—the popup should continue surfacing approximate memory data. Chrome may briefly flash the debugger infobar while it gathers fallback samples.
 
 ## 7. Troubleshooting
 
@@ -111,7 +115,8 @@ The unpacked assets land in `extension\dist`.
 
 1. Open `chrome://extensions` (Chrome) or `edge://extensions` (Edge) and enable **Developer mode**.
 2. Click **Load unpacked** and choose `C:\code\sleepy-tabs-ext\extension\dist`.
-3. Note the assigned extension ID and update the native messaging manifest’s `allowed_origins` if it changed.
+3. Approve the debugger permission prompt the first time you load the unpacked extension so fallback sampling can run.
+4. Note the assigned extension ID and update the native messaging manifest’s `allowed_origins` if it changed.
 
 ## 9. Verify Everything Works
 

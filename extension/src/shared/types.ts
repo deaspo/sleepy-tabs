@@ -14,12 +14,16 @@ export interface ConsentState {
   acceptedAt?: number;
 }
 
+export type TabMemorySource = 'companion' | 'probe' | 'debugger';
+
 export interface TabState {
   tabId: number;
   lastActiveAt: number;
   ignored: boolean;
   pendingReminder?: SleepAction;
   memoryUsageMb?: number;
+  memorySource?: TabMemorySource;
+  memoryCapturedAt?: number;
 }
 
 export type NativeHostStatus = 'unknown' | 'connecting' | 'connected' | 'disconnected';
@@ -31,6 +35,8 @@ export interface TabTelemetryRecord {
   title?: string;
   action: SleepAction;
   memoryUsageMb?: number;
+  memorySource?: TabMemorySource;
+  memoryCapturedAt?: number;
   reason: 'inactivity' | 'memory' | 'manual' | 'timeout';
   timestamp: number;
   critical: boolean;
@@ -122,6 +128,14 @@ export interface ToggleIgnoreMessage {
   ignored: boolean;
 }
 
+export interface TabMemoryProbeMessage {
+  type: 'tab-memory-probe';
+  memoryUsageMb: number;
+  totalHeapMb?: number;
+  heapLimitMb?: number;
+  source: TabMemorySource;
+}
+
 export interface TabStateUpdatedMessage {
   type: 'tab-state-updated';
   tabId: number;
@@ -150,4 +164,5 @@ export type RuntimeMessage =
   | ToggleIgnoreMessage
   | TabStateUpdatedMessage
   | SleepAllTabsMessage
-  | NativeHostStatusMessage;
+  | NativeHostStatusMessage
+  | TabMemoryProbeMessage;

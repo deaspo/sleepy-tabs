@@ -18,12 +18,14 @@ This guide covers daily operations, configuration adjustments, and troubleshooti
 ## Understanding Tab States
 
 - Tabs marked **ignored** remain untouched by auto sleep/reload but still appear in the dashboard.
-- Memory usage is updated when the companion reports CDP metrics; if the companion is unavailable, values will display as "collecting...".
+- Memory usage now updates via a hybrid chain: the native companion (when online) sends CDP metrics, the debugger fallback samples `Performance.getMetrics` while the companion is offline, and content scripts query `performance.memory` for quick estimates. Only when all sources are unavailable will the UI display "collecting...".
+- The popup shows which sampler produced the current estimate (Native companion, Chrome debugger, or in-tab probe) plus the capture time so you can reason about fidelity before acting.
+- Existing telemetry history is automatically backfilled as "Native companion" on upgrade so older records remain consistent; clearing the dashboard database is no longer required.
 - When a tab is slept (`chrome.tabs.discard`), Chrome may purge its content until refocused.
 
 ## Telemetry Dashboard Tips
 
-- Critical entries (memory-triggered actions) surface at the top. Click the URL to reopen the tab.
+- Critical entries (memory-triggered actions) surface at the top. Click the URL to reopen the tab, and review the memory source/capture timestamp for fidelity context.
 - Use Chrome's side panel toggle (toolbar button) to pin the dashboard for quick access.
 - Data retention is limited to the most recent 200 records by default; plan for export or archival if longer history is required.
 
@@ -33,7 +35,7 @@ This guide covers daily operations, configuration adjustments, and troubleshooti
   - `CDP_ENDPOINT`: Remote debugging URL (default `http://127.0.0.1:9222`).
   - `LOG_LEVEL` (planned): Surface additional diagnostics when implemented.
 - Restart the companion after browser restarts to reattach to new CDP sessions.
-- If the companion is offline, the extension falls back to inactivity-based sleeping only.
+- If the companion is offline, the extension still reports approximate memory via the debugger + `performance.memory` probes, but lifecycle commands (e.g., remote freeze) remain companion-dependent.
 
 ## Troubleshooting
 

@@ -1,7 +1,7 @@
 import type { TabTelemetryRecord } from './types';
 
 const DB_NAME = 'sleepyTabsTelemetry';
-const DB_VERSION = 1;
+const DB_VERSION = 2;
 const STORE_NAME = 'telemetry';
 
 let dbPromise: Promise<IDBDatabase> | null = null;
@@ -11,16 +11,24 @@ function openDb(): Promise<IDBDatabase> {
     dbPromise = new Promise((resolve, reject) => {
       const request = indexedDB.open(DB_NAME, DB_VERSION);
 
-      request.onupgradeneeded = () => {
+      request.onupgradeneeded = (event) => {
         const database = request.result;
+        let store: IDBObjectStore;
+
         if (!database.objectStoreNames.contains(STORE_NAME)) {
-          const store = database.createObjectStore(STORE_NAME, {
+          store = database.createObjectStore(STORE_NAME, {
             keyPath: 'id',
             autoIncrement: true
           });
           store.createIndex('timestamp', 'timestamp');
           store.createIndex('critical', 'critical');
           store.createIndex('tabId', 'tabId');
+        } else {
+          store = request.transaction!.objectStore(STORE_NAME);
+        }
+
+        if ((event.oldVersion ?? 0) < 2) {
+          backfillMemoryMetadata(store);
         }
       };
 
@@ -111,4 +119,34 @@ export async function clearTelemetry(): Promise<void> {
   await withStore('readwrite', (store) => {
     store.clear();
   });
+}
+
+function backfillMemoryMetadata(store: IDBObjectStore): void {
+  const cursorRequest = store.openCursor();
+
+  cursorRequest.onsuccess = () => {
+    const cursor = cursorRequest.result;
+    if (!cursor) {
+      return;
+    }
+
+    const record = cursor.value as TabTelemetryRecord;
+    let mutated = false;
+
+    if (!record.memorySource) {
+      record.memorySource = 'companion';
+      mutated = true;
+    }
+
+    if (!record.memoryCapturedAt) {
+      record.memoryCapturedAt = record.timestamp ?? Date.now();
+      mutated = true;
+    }
+
+    if (mutated) {
+      cursor.update(record);
+    }
+
+    cursor.continue();
+  };
 }

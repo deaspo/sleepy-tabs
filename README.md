@@ -1,6 +1,6 @@
 # Sleepy Tabs Guardian
 
-Sleepy Tabs Guardian is a Manifest V3 Chrome/Chromium extension that automatically freezes inactive tabs, reloads high-memory pages, and surfaces rich telemetry in a dashboard. A Node.js + Playwright companion service connects to the Chrome DevTools Protocol (CDP) to collect tab metrics and drive lifecycle actions such as `Page.setWebLifecycleState`.
+Sleepy Tabs Guardian is a Manifest V3 Chrome/Chromium extension that automatically freezes inactive tabs, reloads high-memory pages, and surfaces rich telemetry in a dashboard. A hybrid pipeline combines lightweight in-tab sampling, Chrome's debugger API, and an optional Node.js + Playwright companion service to collect CDP metrics and drive lifecycle actions such as `Page.setWebLifecycleState`.
 
 ## Features
 - Auto-sleep inactive tabs after a configurable timeout (default 5 minutes) with per-tab override switches.
@@ -8,7 +8,7 @@ Sleepy Tabs Guardian is a Manifest V3 Chrome/Chromium extension that automatical
 - IndexedDB-powered telemetry log with dashboard highlighting critical pages and recent actions.
 - Consent workflow plus in-page reminders with countdowns that auto-accept actions if the user is away.
 - Options page for thresholds, reminder timers, and automation toggles.
-- Native messaging bridge to a Playwright companion process for CDP access.
+- Hybrid telemetry stack: `performance.memory` probes run inside each tab, Chrome's debugger API gathers fallback CDP metrics when the companion is offline, and the native messaging bridge delivers the richest dataset when available.
 
 ## Repository Layout
 ```
@@ -24,10 +24,13 @@ Sleepy Tabs Guardian is a Manifest V3 Chrome/Chromium extension that automatical
 - Node.js 20+
 - npm 9+
 - Chrome/Chromium launched with the remote debugging port open (default `localhost:9222`).
-- For native messaging: ability to register host manifests on your OS.
+- Chrome will display the "X is debugging this browser" infobar whenever the extension needs to attach via `chrome.debugger` (only triggered when the companion is offline).
+- For native messaging: ability to register host manifests on your OS (recommended for full CDP control).
 
 ## Getting Started
+
 Install dependencies for all workspaces:
+
 ```bash
 npm install
 npm install -w extension
@@ -65,7 +68,7 @@ Follow the platform-specific instructions in `docs/getting-started.md` to regist
 
 - **Live settings:** stored in `chrome.storage.local`/`chrome.storage.sync`.
 - **Historical actions:** persisted in IndexedDB (`sleepyTabsTelemetry`) and displayed in the dashboard (Side Panel).
-- **Companion telemetry:** streamed through native messaging and merged into tab state to drive reload decisions.
+- **Telemetry sources:** native companion (Playwright/CDP) when online, Chrome's debugger API for tabs lacking native data, and in-tab `performance.memory` sampling for quick estimates without any external process.
 
 ## Testing Notes
 

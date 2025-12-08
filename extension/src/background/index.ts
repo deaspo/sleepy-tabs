@@ -5,6 +5,7 @@ import { getConsentState, getSettings, getTabState, setNativeHostStatus } from '
 import type {
   CompanionInboundMessage,
   ManualActionMessage,
+  NativeHostStatus,
   ReminderDecisionMessage,
   RuntimeMessage,
   TabStateRequestMessage,
@@ -13,6 +14,37 @@ import type {
 
 const manager = new SleepManager();
 let companionRetryHandle: ReturnType<typeof setTimeout> | null = null;
+let currentNativeHostStatus: NativeHostStatus = 'unknown';
+const DEBUGGER_PROBE_ALARM = 'sleepy-tabs-debugger-probe';
+const DEBUGGER_PROBE_INTERVAL_MINUTES = 0.5;
+const DEBUGGER_SAMPLE_STALE_MS = 60 * 1000;
+const DEBUGGER_MAX_TABS_PER_RUN = 1;
+const activeDebuggerSessions = new Set<number>();
+
+interface PerformanceMetricsResponse {
+  metrics?: Array<{ name: string; value: number }>;
+}
+
+function reflectNativeHostStatus(status: NativeHostStatus): void {
+  currentNativeHostStatus = status;
+  void setNativeHostStatus(status);
+  if (status === 'connected') {
+    void chrome.alarms.clear(DEBUGGER_PROBE_ALARM);
+  } else if (status === 'disconnected') {
+    void ensureDebuggerProbeAlarm();
+    void pollDebuggerTelemetry();
+  }
+}
+
+async function ensureDebuggerProbeAlarm(): Promise<void> {
+  const alarm = await chrome.alarms.get(DEBUGGER_PROBE_ALARM);
+  if (!alarm) {
+    chrome.alarms.create(DEBUGGER_PROBE_ALARM, {
+      periodInMinutes: DEBUGGER_PROBE_INTERVAL_MINUTES,
+      delayInMinutes: DEBUGGER_PROBE_INTERVAL_MINUTES
+    });
+  }
+}
 
 function scheduleCompanionRetry(delay = 5000): void {
   if (companionRetryHandle) {
@@ -25,7 +57,7 @@ function scheduleCompanionRetry(delay = 5000): void {
 }
 
 async function bootstrap(): Promise<void> {
-  await setNativeHostStatus('connecting');
+  reflectNativeHostStatus('connecting');
   await manager.init();
   manager.scheduleSettingsPoll();
   setupCompanionBridge();
@@ -34,12 +66,12 @@ async function bootstrap(): Promise<void> {
 function setupCompanionBridge(): void {
   const port = ensureNativePort();
   if (!port) {
-    void setNativeHostStatus('disconnected');
+    reflectNativeHostStatus('disconnected');
     scheduleCompanionRetry();
     return;
   }
 
-  void setNativeHostStatus('connected');
+  reflectNativeHostStatus('connected');
   void manager.hydrateExistingTabs();
   postToCompanion({ type: 'monitor-tabs' });
 
@@ -56,9 +88,139 @@ function setupCompanionBridge(): void {
   });
 
   port.onDisconnect.addListener(() => {
-    void setNativeHostStatus('disconnected');
+    reflectNativeHostStatus('disconnected');
     scheduleCompanionRetry();
   });
+}
+
+async function pollDebuggerTelemetry(): Promise<void> {
+  if (currentNativeHostStatus === 'connected') {
+    await chrome.alarms.clear(DEBUGGER_PROBE_ALARM);
+    return;
+  }
+
+  const [tabs, state] = await Promise.all([chrome.tabs.query({ discarded: false }), getTabState()]);
+  const now = Date.now();
+  const candidates: number[] = [];
+
+  for (const tab of tabs) {
+    if (candidates.length >= DEBUGGER_MAX_TABS_PER_RUN) {
+      break;
+    }
+    if (typeof tab.id !== 'number') {
+      continue;
+    }
+    if (!isDebuggerAttachable(tab)) {
+      continue;
+    }
+    const tabState = state[tab.id];
+    if (!tabState || tabState.ignored) {
+      continue;
+    }
+    if (tabState.memorySource === 'companion') {
+      continue;
+    }
+    const lastCapturedAt = tabState.memoryCapturedAt ?? 0;
+    if (now - lastCapturedAt < DEBUGGER_SAMPLE_STALE_MS) {
+      continue;
+    }
+    candidates.push(tab.id);
+  }
+
+  for (const tabId of candidates) {
+    await collectTabMemoryViaDebugger(tabId);
+  }
+}
+
+async function collectTabMemoryViaDebugger(tabId: number): Promise<void> {
+  if (activeDebuggerSessions.has(tabId)) {
+    return;
+  }
+
+  const target: chrome.debugger.Debuggee = { tabId };
+  let attached = false;
+  activeDebuggerSessions.add(tabId);
+
+  try {
+    await attachDebugger(target);
+    attached = true;
+    const metrics = await sendDebuggerCommand<PerformanceMetricsResponse>(
+      target,
+      'Performance.getMetrics',
+      {}
+    );
+    const usedMetric = Array.isArray(metrics.metrics)
+      ? metrics.metrics.find((metric) => metric.name === 'JSHeapUsedSize')
+      : undefined;
+
+    if (usedMetric && typeof usedMetric.value === 'number') {
+      const memoryUsageMb = bytesToMb(usedMetric.value);
+      await manager.updateTabMemory(tabId, memoryUsageMb, 'debugger');
+    }
+  } catch (error) {
+    console.warn('Debugger memory probe failed', { tabId, error });
+  } finally {
+    if (attached) {
+      await detachDebugger(target);
+    }
+    activeDebuggerSessions.delete(tabId);
+  }
+}
+
+function attachDebugger(target: chrome.debugger.Debuggee): Promise<void> {
+  return new Promise((resolve, reject) => {
+    chrome.debugger.attach(target, '1.3', () => {
+      const error = chrome.runtime.lastError;
+      if (error) {
+        reject(new Error(error.message));
+        return;
+      }
+      resolve();
+    });
+  });
+}
+
+function detachDebugger(target: chrome.debugger.Debuggee): Promise<void> {
+  return new Promise((resolve) => {
+    chrome.debugger.detach(target, () => {
+      const error = chrome.runtime.lastError;
+      if (error) {
+        console.warn('Debugger detach error', error.message);
+      }
+      resolve();
+    });
+  });
+}
+
+function sendDebuggerCommand<T = unknown>(
+  target: chrome.debugger.Debuggee,
+  method: string,
+  params: Record<string, unknown>
+): Promise<T> {
+  return new Promise((resolve, reject) => {
+    chrome.debugger.sendCommand(target, method, params, (response) => {
+      const error = chrome.runtime.lastError;
+      if (error) {
+        reject(new Error(error.message));
+        return;
+      }
+      resolve(response as T);
+    });
+  });
+}
+
+function isDebuggerAttachable(tab: chrome.tabs.Tab): boolean {
+  if (!tab.url) {
+    return false;
+  }
+  if (tab.url.startsWith('chrome://') || tab.url.startsWith('edge://') || tab.url.startsWith('chrome-extension://')) {
+    return false;
+  }
+  return true;
+}
+
+function bytesToMb(bytes: number): number {
+  return Math.round((bytes / 1048576) * 100) / 100;
 }
 
 void bootstrap();
@@ -79,6 +241,8 @@ chrome.runtime.onStartup.addListener(() => {
 chrome.alarms.onAlarm.addListener((alarm) => {
   if (alarm.name === WATCHDOG_ALARM) {
     void manager.evaluateTabs();
+  } else if (alarm.name === DEBUGGER_PROBE_ALARM) {
+    void pollDebuggerTelemetry();
   }
 });
 
@@ -146,6 +310,17 @@ chrome.runtime.onMessage.addListener((message: RuntimeMessage, sender, sendRespo
     const toggle = message as ToggleIgnoreMessage;
     void manager.setTabIgnored(toggle.tabId, toggle.ignored).then(() => sendResponse({ success: true }));
     return true;
+  }
+
+  if (message.type === 'tab-memory-probe') {
+    if (currentNativeHostStatus === 'connected') {
+      return false;
+    }
+    const senderTabId = sender.tab?.id;
+    if (typeof senderTabId === 'number') {
+      void manager.updateTabMemory(senderTabId, message.memoryUsageMb, 'probe');
+    }
+    return false;
   }
 
   if (message.type === 'sleep-all-tabs') {
