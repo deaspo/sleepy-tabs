@@ -14,6 +14,7 @@ interface PopupState {
 function PopupApp(): JSX.Element {
   const [state, setState] = useState<PopupState | null>(null);
   const [status, setStatus] = useState<string>('');
+  const currentTabId = state?.tabId ?? null;
 
   useEffect(() => {
     chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
@@ -61,6 +62,39 @@ function PopupApp(): JSX.Element {
       chrome.runtime.onMessage.removeListener(handleMessage);
     };
   }, []);
+
+  useEffect(() => {
+    if (typeof currentTabId !== 'number') {
+      return;
+    }
+
+    const listener = (
+      changes: Record<string, chrome.storage.StorageChange>,
+      areaName: 'sync' | 'local' | 'managed' | 'session'
+    ): void => {
+      if (areaName !== 'local') {
+        return;
+      }
+      const tabStateChange = changes['sleepyTabs.tabState'];
+      if (!tabStateChange) {
+        return;
+      }
+      const newState = tabStateChange.newValue as Record<number, TabState> | undefined;
+      if (!newState) {
+        return;
+      }
+      const updated = newState[currentTabId];
+      if (!updated) {
+        return;
+      }
+      setState((prev) => (prev ? { ...prev, ignored: updated.ignored, memoryUsageMb: updated.memoryUsageMb } : prev));
+    };
+
+    chrome.storage.onChanged.addListener(listener);
+    return () => {
+      chrome.storage.onChanged.removeListener(listener);
+    };
+  }, [currentTabId]);
 
   const handleAction = (action: SleepAction) => {
     if (!state) {
