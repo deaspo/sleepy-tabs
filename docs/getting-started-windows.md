@@ -8,7 +8,7 @@ This guide mirrors the standard setup but calls out every Windows-specific step 
 
 - Windows 10 or 11 with permission to install native messaging hosts (per-user rights are enough).
 - Node.js 20+ and npm 9+ (`node -v`, `npm -v`).
-- Google Chrome (Manifest V3 capable) or Chromium.
+- Google Chrome or Microsoft Edge (Manifest V3 capable). Chromium also works.
 - Ability to launch Chrome with remote debugging enabled.
 
 ## 2. Clone and Install
@@ -37,29 +37,35 @@ npm run lint
 npm run typecheck
 ```
 
-## 4. Launch Chrome with Remote Debugging
+## 4. Launch Browser with Remote Debugging
 
 Use a dedicated profile to keep personal browsing untouched. Pick the shell you prefer.
 
-### Command Prompt
+### Google Chrome (Command Prompt)
 
 ```cmd
 "C:\Program Files\Google\Chrome\Application\chrome.exe" --remote-debugging-port=9222 --user-data-dir="%LOCALAPPDATA%\Temp\sleepy-tabs-profile"
 ```
 
-### PowerShell
+### Google Chrome (PowerShell)
 
 ```powershell
 & "C:\Program Files\Google\Chrome\Application\chrome.exe" --remote-debugging-port=9222 --user-data-dir "$env:LOCALAPPDATA\Temp\sleepy-tabs-profile"
 ```
 
-Adjust the executable path if Chrome is installed elsewhere. For Chromium, point at `chromium.exe` instead.
+### Microsoft Edge
+
+```powershell
+& "C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe" --remote-debugging-port=9222 --user-data-dir "$env:LOCALAPPDATA\Temp\sleepy-tabs-profile"
+```
+
+Adjust the executable path if your browser is installed elsewhere. For Chromium, point at `chromium.exe` instead.
 
 Verify remote debugging is live by visiting `http://localhost:9222` in another tab—you should see a list of open targets.
 
 ## 5. Register the Native Messaging Host
 
-Chrome needs two things: a manifest that describes the host and a registry entry that tells Chrome where to find that manifest.
+Chrome and Edge both need two things: a manifest that describes the host and a registry entry that tells the browser where to find that manifest.
 
 1. **Create a Windows launcher for the companion.**
 
@@ -77,7 +83,7 @@ Chrome needs two things: a manifest that describes the host and a registry entry
    - Update `NODE_EXE` if Node lives in a different directory.
    - Keep the script in the repo so the manifest can reference a stable path.
 
-2. **Edit `native-messaging\sleepy-tabs-companion.json`.** Replace the `path` with the script above and set the extension ID after you load the extension:
+2. **Edit `native-messaging\sleepy-tabs-companion.json`.** Replace the `path` with the script above and set the extension ID after you load the extension in your target browser:
 
    ```json
    {
@@ -91,26 +97,33 @@ Chrome needs two things: a manifest that describes the host and a registry entry
    }
    ```
 
-3. **Copy the manifest to Chrome’s host directory.**
+3. **Copy the manifest to the browser’s host directory.**
 
    ```powershell
-   $hostDir = "$env:LOCALAPPDATA\Google\Chrome\User Data\NativeMessagingHosts"
-   New-Item -Path $hostDir -ItemType Directory -Force | Out-Null
-   Copy-Item -Path C:\code\sleepy-tabs-ext\native-messaging\sleepy-tabs-companion.json -Destination "$hostDir\com.sleepytabs.companion.json" -Force
+   $chromeHostDir = "$env:LOCALAPPDATA\Google\Chrome\User Data\NativeMessagingHosts"
+   New-Item -Path $chromeHostDir -ItemType Directory -Force | Out-Null
+   Copy-Item -Path C:\code\sleepy-tabs-ext\native-messaging\sleepy-tabs-companion.json -Destination "$chromeHostDir\com.sleepytabs.companion.json" -Force
+
+   $edgeHostDir = "$env:LOCALAPPDATA\Microsoft\Edge\User Data\NativeMessagingHosts"
+   New-Item -Path $edgeHostDir -ItemType Directory -Force | Out-Null
+   Copy-Item -Path C:\code\sleepy-tabs-ext\native-messaging\sleepy-tabs-companion.json -Destination "$edgeHostDir\com.sleepytabs.companion.json" -Force
    ```
 
-4. **Register the manifest in the Windows registry.** Save the snippet below as `register-sleepy-tabs-host.reg`, update the path if needed, then double-click it (or import via `regedit`).
+4. **Register the manifest in the Windows registry.** Save the snippet below as `register-sleepy-tabs-host.reg`, update the paths if needed, then double-click it (or import via `regedit`).
 
    ```reg
    Windows Registry Editor Version 5.00
 
    [HKEY_CURRENT_USER\Software\Google\Chrome\NativeMessagingHosts\com.sleepytabs.companion]
    @="C:\\Users\\<YourUser>\\AppData\\Local\\Google\\Chrome\\User Data\\NativeMessagingHosts\\com.sleepytabs.companion.json"
+
+   [HKEY_CURRENT_USER\Software\Microsoft\Edge\NativeMessagingHosts\com.sleepytabs.companion]
+   @="C:\\Users\\<YourUser>\\AppData\\Local\\Microsoft\\Edge\\User Data\\NativeMessagingHosts\\com.sleepytabs.companion.json"
    ```
 
-   Replace `<YourUser>` with your Windows username. Chrome reads the entry on launch.
+   Replace `<YourUser>` with your Windows username. Each browser reads its respective entry on launch.
 
-5. Restart Chrome after updating manifests or registry entries.
+5. Restart your browser after updating manifests or registry entries.
 
 ## 6. Start the Companion Service
 
@@ -130,9 +143,9 @@ npm run build -w extension
 
 The unpacked assets land in `extension\dist`.
 
-## 8. Load the Extension in Chrome
+## 8. Load the Extension in the Browser
 
-1. Visit `chrome://extensions` and enable **Developer mode**.
+1. Open `chrome://extensions` (Chrome) or `edge://extensions` (Edge) and enable **Developer mode**.
 2. Click **Load unpacked** and choose `C:\code\sleepy-tabs-ext\extension\dist`.
 3. Note the assigned extension ID and update the native messaging manifest’s `allowed_origins` if it changed.
 
@@ -151,6 +164,6 @@ The unpacked assets land in `extension\dist`.
 ## Troubleshooting
 
 - **Service worker registration failed (status code 3):** ensure you copied a fresh `extension\dist` build (not a dev server output) and reloaded the unpacked extension.
-- **Specified native messaging host not found:** double-check the manifest path, registry entry, and that `run-companion.cmd` plus Node are reachable from Chrome.
+- **Specified native messaging host not found:** double-check the manifest path, registry entry, and that `run-companion.cmd` plus Node are reachable from the browser.
 - **Reminder modal never appears:** make sure `extension\dist\reminderModal.ts-loader.js` exists—`npm run build -w extension` runs a post-build script to materialize it.
-- **Companion fails to start:** verify Chrome is running with `--remote-debugging-port=9222` and that the `CDP_ENDPOINT` environment variable matches the port.
+- **Companion fails to start:** verify your browser is running with `--remote-debugging-port=9222` and that the `CDP_ENDPOINT` environment variable matches the port.

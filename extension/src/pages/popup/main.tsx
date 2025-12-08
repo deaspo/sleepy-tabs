@@ -1,7 +1,7 @@
 import { useEffect, useState, type ChangeEvent } from 'react';
 import ReactDOM from 'react-dom/client';
 
-import type { SleepAction, TabState } from '../../shared/types';
+import type { SleepAction, TabState, RuntimeMessage } from '../../shared/types';
 
 interface PopupState {
   tabId: number;
@@ -35,6 +35,31 @@ function PopupApp(): JSX.Element {
         }
       );
     });
+  }, []);
+
+  useEffect(() => {
+    const handleMessage = (message: RuntimeMessage): void => {
+      if (message.type !== 'tab-state-updated') {
+        return;
+      }
+
+      setState((prev) => {
+        if (!prev || prev.tabId !== message.tabId) {
+          return prev;
+        }
+
+        return {
+          ...prev,
+          ignored: message.state.ignored,
+          memoryUsageMb: message.state.memoryUsageMb
+        };
+      });
+    };
+
+    chrome.runtime.onMessage.addListener(handleMessage);
+    return () => {
+      chrome.runtime.onMessage.removeListener(handleMessage);
+    };
   }, []);
 
   const handleAction = (action: SleepAction) => {

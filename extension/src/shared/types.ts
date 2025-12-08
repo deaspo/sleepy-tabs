@@ -120,6 +120,12 @@ export interface ToggleIgnoreMessage {
   ignored: boolean;
 }
 
+export interface TabStateUpdatedMessage {
+  type: 'tab-state-updated';
+  tabId: number;
+  state: TabState;
+}
+
 export type RuntimeMessage =
   | SettingsUpdateMessage
   | SettingsRequestMessage
@@ -129,4 +135,5 @@ export type RuntimeMessage =
   | TabStateRequestMessage
   | ReminderDecisionMessage
   | ManualActionMessage
-  | ToggleIgnoreMessage;
+  | ToggleIgnoreMessage
+  | TabStateUpdatedMessage;

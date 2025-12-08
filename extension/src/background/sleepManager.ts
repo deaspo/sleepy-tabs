@@ -238,6 +238,13 @@ export class SleepManager {
 
     tabState.memoryUsageMb = memoryUsageMb;
     await setTabState(state);
+    void sendRuntimeMessage({
+      type: 'tab-state-updated',
+      tabId,
+      state: tabState
+    }).catch((error) => {
+      console.warn('Failed to broadcast tab state update', error);
+    });
   }
 
   async handleManualAction(tabId: number, action: SleepAction): Promise<void> {
