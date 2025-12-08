@@ -80,7 +80,7 @@ function DashboardApp(): JSX.Element {
 
   return (
     <div
-      style={{ fontFamily: 'system-ui, sans-serif', padding: '24px', maxWidth: 960, minWidth: 320, margin: '0 auto' }}
+      style={{ fontFamily: 'system-ui, sans-serif', padding: '24px', maxWidth: 960, minWidth: 480, margin: '0 auto' }}
     >
       <header style={{ marginBottom: 24 }}>
         <h1 style={{ margin: 0 }}>Sleepy Tabs Dashboard</h1>
