@@ -14,6 +14,7 @@ interface PopupState {
 function PopupApp(): JSX.Element {
   const [state, setState] = useState<PopupState | null>(null);
   const [status, setStatus] = useState<string>('');
+  const [excludeCurrentTab, setExcludeCurrentTab] = useState<boolean>(true);
   const currentTabId = state?.tabId ?? null;
 
   useEffect(() => {
@@ -122,13 +123,37 @@ function PopupApp(): JSX.Element {
   };
 
   const handleSleepAll = () => {
-    chrome.runtime.sendMessage({ type: 'sleep-all-tabs', excludeActive: true }, () => {
+    type SleepAllResponse = {
+      success: boolean;
+      attempted?: number;
+      succeeded?: number;
+      errors?: Array<{ tabId: number; message: string }>;
+      error?: string;
+    };
+
+    chrome.runtime.sendMessage({ type: 'sleep-all-tabs', excludeActive: excludeCurrentTab }, (response: SleepAllResponse) => {
+      let messageText = '';
+
       if (chrome.runtime.lastError) {
-        setStatus('Failed to sleep tabs');
+        messageText = `Failed to sleep tabs: ${chrome.runtime.lastError.message}`;
+      } else if (!response?.success) {
+        messageText = `Failed to sleep tabs: ${response?.error ?? 'Unknown error'}`;
       } else {
-        setStatus('Sleeping other tabs');
+        const attempted = response.attempted ?? 0;
+        const succeeded = response.succeeded ?? 0;
+        const failedCount = response.errors?.length ?? 0;
+        if (attempted === 0) {
+          messageText = 'No eligible tabs to sleep';
+        } else if (failedCount > 0) {
+          console.warn('Some tabs failed to sleep', response.errors);
+          messageText = `Slept ${succeeded}/${attempted} tabs; ${failedCount} failed`;
+        } else {
+          messageText = `Slept ${succeeded} tab${succeeded === 1 ? '' : 's'}`;
+        }
       }
-      window.setTimeout(() => setStatus(''), 2000);
+
+      setStatus(messageText);
+      window.setTimeout(() => setStatus(''), 3000);
     });
   };
 
@@ -191,6 +216,15 @@ function PopupApp(): JSX.Element {
           Sleep all tabs
         </button>
       </div>
+
+      <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 8, fontSize: 12 }}>
+        <input
+          type="checkbox"
+          checked={excludeCurrentTab}
+          onChange={(event) => setExcludeCurrentTab(event.target.checked)}
+        />
+        Exclude current tab from bulk sleep
+      </label>
 
       <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 16, fontSize: 13 }}>
         <input type="checkbox" checked={state.ignored} onChange={handleIgnoreToggle} />

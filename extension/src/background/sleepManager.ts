@@ -21,6 +21,12 @@ import type {
 export const WATCHDOG_ALARM = 'sleepy-tabs-watchdog';
 const SETTINGS_POLL_SECONDS = 30;
 
+interface SleepAllResult {
+  attempted: number;
+  succeeded: number;
+  errors: Array<{ tabId: number; message: string }>;
+}
+
 export class SleepManager {
   private settings: SleepSettings | null = null;
   private consent: ConsentState | null = null;
@@ -252,7 +258,7 @@ export class SleepManager {
     await this.executeAction(tabId, action, reason, undefined, false);
   }
 
-  async sleepAllTabs(excludeActive = true): Promise<void> {
+  async sleepAllTabs(excludeActive = true): Promise<SleepAllResult> {
     const [tabs, state] = await Promise.all([
       chrome.tabs.query({ discarded: false }),
       getTabState()
@@ -263,6 +269,12 @@ export class SleepManager {
       const activeTab = tabs.find((tab) => tab.active && typeof tab.id === 'number');
       activeTabId = activeTab?.id;
     }
+
+    const result: SleepAllResult = {
+      attempted: 0,
+      succeeded: 0,
+      errors: []
+    };
 
     for (const tab of tabs) {
       if (typeof tab.id !== 'number') {
@@ -277,12 +289,18 @@ export class SleepManager {
         continue;
       }
 
+      result.attempted += 1;
       try {
         await this.handleManualAction(tab.id, 'sleep');
+        result.succeeded += 1;
       } catch (error) {
         console.error('Failed to put tab to sleep', error);
+        const message = error instanceof Error ? error.message : String(error);
+        result.errors.push({ tabId: tab.id, message });
       }
     }
+
+    return result;
   }
 
   async updateConsent(consent: ConsentState): Promise<void> {
