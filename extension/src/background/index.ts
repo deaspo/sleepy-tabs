@@ -1,7 +1,7 @@
 import { SleepManager, WATCHDOG_ALARM } from './sleepManager';
-import { ensureNativePort } from '../shared/messaging';
+import { ensureNativePort, postToCompanion } from '../shared/messaging';
 import { getRecentTelemetry } from '../shared/telemetryDb';
-import { getConsentState, getSettings, getTabState } from '../shared/storage';
+import { getConsentState, getSettings, getTabState, setNativeHostStatus } from '../shared/storage';
 import type {
   CompanionInboundMessage,
   ManualActionMessage,
@@ -12,8 +12,20 @@ import type {
 } from '../shared/types';
 
 const manager = new SleepManager();
+let companionRetryHandle: ReturnType<typeof setTimeout> | null = null;
+
+function scheduleCompanionRetry(delay = 5000): void {
+  if (companionRetryHandle) {
+    return;
+  }
+  companionRetryHandle = setTimeout(() => {
+    companionRetryHandle = null;
+    setupCompanionBridge();
+  }, delay);
+}
 
 async function bootstrap(): Promise<void> {
+  await setNativeHostStatus('connecting');
   await manager.init();
   manager.scheduleSettingsPoll();
   setupCompanionBridge();
@@ -22,8 +34,14 @@ async function bootstrap(): Promise<void> {
 function setupCompanionBridge(): void {
   const port = ensureNativePort();
   if (!port) {
+    void setNativeHostStatus('disconnected');
+    scheduleCompanionRetry();
     return;
   }
+
+  void setNativeHostStatus('connected');
+  void manager.hydrateExistingTabs();
+  postToCompanion({ type: 'monitor-tabs' });
 
   const handleMessage = async (message: CompanionInboundMessage) => {
     if (message.type === 'telemetry') {
@@ -38,7 +56,8 @@ function setupCompanionBridge(): void {
   });
 
   port.onDisconnect.addListener(() => {
-    setTimeout(setupCompanionBridge, 5000);
+    void setNativeHostStatus('disconnected');
+    scheduleCompanionRetry();
   });
 }
 

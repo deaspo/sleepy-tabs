@@ -5,7 +5,7 @@ import {
   SETTINGS_VERSION,
   STORAGE_KEYS
 } from './constants';
-import type { ConsentState, SleepSettings, TabState } from './types';
+import type { ConsentState, NativeHostStatus, SleepSettings, TabState } from './types';
 
 export async function getSettings(): Promise<SleepSettings> {
   const result = await chrome.storage.local.get(STORAGE_KEYS.settings);
@@ -74,4 +74,15 @@ export async function deleteTabState(tabId: number): Promise<void> {
   const state = await getTabState();
   delete state[tabId];
   await setTabState(state);
+}
+
+export async function getNativeHostStatus(): Promise<NativeHostStatus> {
+  const result = await chrome.storage.local.get(STORAGE_KEYS.nativeHostStatus);
+  return (result[STORAGE_KEYS.nativeHostStatus] as NativeHostStatus | undefined) ?? 'unknown';
+}
+
+export async function setNativeHostStatus(status: NativeHostStatus): Promise<void> {
+  await chrome.storage.local.set({
+    [STORAGE_KEYS.nativeHostStatus]: status
+  });
 }

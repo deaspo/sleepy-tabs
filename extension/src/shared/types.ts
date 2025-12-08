@@ -22,6 +22,8 @@ export interface TabState {
   memoryUsageMb?: number;
 }
 
+export type NativeHostStatus = 'unknown' | 'connecting' | 'connected' | 'disconnected';
+
 export interface TabTelemetryRecord {
   id?: number;
   tabId: number;
@@ -131,6 +133,11 @@ export interface SleepAllTabsMessage {
   excludeActive?: boolean;
 }
 
+export interface NativeHostStatusMessage {
+  type: 'native-host-status';
+  status: NativeHostStatus;
+}
+
 export type RuntimeMessage =
   | SettingsUpdateMessage
   | SettingsRequestMessage
@@ -142,4 +149,5 @@ export type RuntimeMessage =
   | ManualActionMessage
   | ToggleIgnoreMessage
   | TabStateUpdatedMessage
-  | SleepAllTabsMessage;
+  | SleepAllTabsMessage
+  | NativeHostStatusMessage;

@@ -5,7 +5,8 @@ export const DEFAULT_REMINDER_TIMEOUT_SECONDS = 15;
 export const STORAGE_KEYS = {
   settings: 'sleepyTabs.settings',
   tabState: 'sleepyTabs.tabState',
-  consent: 'sleepyTabs.consent'
+  consent: 'sleepyTabs.consent',
+  nativeHostStatus: 'sleepyTabs.nativeHostStatus'
 } as const;
 
 export const SETTINGS_VERSION = 1;
