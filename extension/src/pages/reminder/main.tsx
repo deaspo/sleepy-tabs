@@ -1,0 +1,102 @@
+import { useEffect, useMemo, useState } from 'react';
+import ReactDOM from 'react-dom/client';
+
+import { notifyReminderDecision } from '../../shared/messaging';
+import type { SleepAction, TabTelemetryRecord } from '../../shared/types';
+
+function useCountdown(seconds: number, onElapsed: () => void): number {
+  const [remaining, setRemaining] = useState(seconds);
+
+  useEffect(() => {
+    if (seconds <= 0) {
+      return;
+    }
+    let current = seconds;
+    const timer = window.setInterval(() => {
+      current -= 1;
+      if (current <= 0) {
+        window.clearInterval(timer);
+        onElapsed();
+      }
+      setRemaining(current);
+    }, 1000);
+    return () => window.clearInterval(timer);
+  }, [seconds, onElapsed]);
+
+  return remaining;
+}
+
+function ReminderApp(): JSX.Element {
+  const params = useMemo(() => new URLSearchParams(window.location.search), []);
+  const tabId = Number(params.get('tabId') ?? -1);
+  const action = (params.get('action') ?? 'sleep') as SleepAction;
+  const reason = (params.get('reason') ?? 'inactivity') as TabTelemetryRecord['reason'];
+  const timeoutSeconds = Number(params.get('timeoutSeconds') ?? 15);
+  const memoryUsageMb = params.get('memoryUsageMb')
+    ? Number(params.get('memoryUsageMb'))
+    : undefined;
+
+  const remaining = useCountdown(timeoutSeconds, () => {
+    notifyReminderDecision(tabId, action, true, reason, memoryUsageMb);
+    window.close();
+  });
+
+  const handleDecision = (proceed: boolean) => {
+    notifyReminderDecision(tabId, action, proceed, reason, memoryUsageMb);
+    window.close();
+  };
+
+  return (
+    <div
+      style={{
+        maxWidth: 480,
+        margin: '20vh auto',
+        padding: '24px',
+        borderRadius: 12,
+        border: '1px solid #e0e0e0',
+        fontFamily: 'system-ui, sans-serif',
+        textAlign: 'center'
+      }}
+    >
+      <h1 style={{ marginTop: 0 }}>
+        {action === 'sleep' ? 'Pause inactive tab?' : 'Reload heavy tab?'}
+      </h1>
+      <p>
+        {reason === 'memory'
+          ? `This tab is using ${memoryUsageMb ?? 'unknown'} MB of memory.`
+          : 'This tab has been inactive for a while.'}
+      </p>
+      <p>We will proceed automatically in {remaining} seconds.</p>
+      <div style={{ display: 'flex', justifyContent: 'center', gap: 12 }}>
+        <button
+          type="button"
+          onClick={() => handleDecision(false)}
+          style={{
+            padding: '8px 16px',
+            borderRadius: 6,
+            border: '1px solid #1a73e8',
+            background: '#fff',
+            color: '#1a73e8'
+          }}
+        >
+          Keep active
+        </button>
+        <button
+          type="button"
+          onClick={() => handleDecision(true)}
+          style={{
+            padding: '8px 16px',
+            borderRadius: 6,
+            border: 'none',
+            background: '#1a73e8',
+            color: '#fff'
+          }}
+        >
+          {action === 'sleep' ? 'Sleep now' : 'Reload now'}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById('root') as HTMLElement).render(<ReminderApp />);

@@ -1,0 +1,34 @@
+{
+  "name": "sleepy-tabs-ext",
+  "version": "1.0.0",
+  "description": "",
+  "private": true,
+  "type": "module",
+  "main": "index.js",
+  "scripts": {
+    "build": "npm run build -w extension",
+    "dev": "npm run dev -w extension",
+    "lint": "npm run lint -w extension && npm run lint -w companion",
+    "test": "npm run test -w extension && npm run test -w companion",
+    "typecheck": "npm run typecheck -w extension && npm run typecheck -w companion"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "MIT",
+  "workspaces": [
+    "extension",
+    "companion"
+  ],
+  "devDependencies": {
+    "@typescript-eslint/eslint-plugin": "^7.17.0",
+    "@typescript-eslint/parser": "^7.17.0",
+    "eslint": "^8.57.0",
+    "eslint-config-prettier": "^9.1.0",
+    "eslint-plugin-import": "^2.29.0",
+    "eslint-plugin-jsx-a11y": "^6.8.0",
+    "eslint-plugin-react": "^7.35.0",
+    "eslint-plugin-react-hooks": "^4.6.0",
+    "prettier": "^3.3.0",
+    "typescript": "5.5.4"
+  }
+}
