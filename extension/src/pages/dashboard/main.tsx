@@ -141,7 +141,7 @@ function DashboardApp(): JSX.Element {
                 <th style={{ padding: '8px 12px' }}>Time</th>
                 <th style={{ padding: '8px 12px' }}>Action</th>
                 <th style={{ padding: '8px 12px' }}>Reason</th>
-                <th style={{ padding: '8px 12px' }}>Memory (MB)</th>
+                {/* <th style={{ padding: '8px 12px' }}>Memory (MB)</th> */}
                 <th style={{ padding: '8px 12px' }}>Title</th>
                 <th style={{ padding: '8px 12px' }}>URL</th>
               </tr>
@@ -155,10 +155,10 @@ function DashboardApp(): JSX.Element {
                   <td style={{ padding: '8px 12px', whiteSpace: 'nowrap' }}>{formatTime(record.timestamp)}</td>
                   <td style={{ padding: '8px 12px', textTransform: 'capitalize' }}>{record.action}</td>
                   <td style={{ padding: '8px 12px', textTransform: 'capitalize' }}>{record.reason}</td>
-                  <td style={{ padding: '8px 12px' }}>
+                  {/* <td style={{ padding: '8px 12px' }}>
                     <div>{record.memoryUsageMb?.toFixed(2) ?? '—'}</div>
                     <div style={{ fontSize: 11, color: '#5f6368' }}>{formatMemoryDetail(record)}</div>
-                  </td>
+                  </td> */}
                   <td style={{ padding: '8px 12px' }}>{record.title ?? 'Untitled'}</td>
                   <td style={{ padding: '8px 12px', wordBreak: 'break-word' }}>{record.url}</td>
                 </tr>
