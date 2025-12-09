@@ -158,6 +158,7 @@ export class SleepManager {
     await setTabState(state);
 
     try {
+      await this.focusTabIfPossible(tabId, tabState.windowId);
       await chrome.tabs.sendMessage(tabId, {
         type: 'sleepy-tabs-reminder',
         tabId,
@@ -379,5 +380,16 @@ export class SleepManager {
     }).catch((error) => {
       console.warn('Failed to broadcast tab state update', error);
     });
+  }
+
+  private async focusTabIfPossible(tabId: number, windowId?: number): Promise<void> {
+    try {
+      await chrome.tabs.update(tabId, { active: true });
+      if (typeof windowId === 'number') {
+        await chrome.windows.update(windowId, { focused: true });
+      }
+    } catch (error) {
+      console.warn('Unable to auto-focus tab before reminder', error);
+    }
   }
 }
