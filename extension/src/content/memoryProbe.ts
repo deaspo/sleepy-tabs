@@ -108,13 +108,27 @@ async function publishMeasurement(): Promise<void> {
     source: 'probe'
   };
 
-  runtime.sendMessage(payload, () => {
-    // Swallow errors triggered when the service worker is asleep.
-    const error = runtime.lastError;
-    if (error) {
-      console.debug('Memory probe message not delivered', error.message);
+  if (!runtime.id) {
+    // Happens when the extension was reloaded but the tab still hosts the old content script.
+    return;
+  }
+
+  try {
+    runtime.sendMessage(payload, () => {
+      // Swallow errors triggered when the service worker is asleep.
+      const error = runtime.lastError;
+      if (error) {
+        console.debug('Memory probe message not delivered', error.message);
+      }
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    if (message.includes('Extension context invalidated')) {
+      console.debug('Memory probe skipped: extension context invalidated');
+      return;
     }
-  });
+    throw error;
+  }
 }
 
 function scheduleSampling(): void {

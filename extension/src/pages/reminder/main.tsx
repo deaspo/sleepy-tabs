@@ -84,7 +84,9 @@ function ReminderApp(): JSX.Element {
         <div style={{ fontSize: 14, color: '#202124', marginBottom: 12 }}>
           <p style={{ margin: '0 0 4px 0' }}>Latest memory snapshot:</p>
           <ul style={{ listStyle: 'none', padding: 0, margin: 0 }}>
-            <li>JS heap: {memoryUsageMb?.toFixed(2) ?? 'unknown'} MB</li>
+            {typeof memoryUsageMb === 'number' && (
+              <li>JS heap: {memoryUsageMb.toFixed(2)} MB</li>
+            )}
             {typeof totalHeapMb === 'number' && (
               <li>
                 Heap total: {totalHeapMb.toFixed(2)} MB
@@ -101,7 +103,7 @@ function ReminderApp(): JSX.Element {
           <div style={{ color: '#5f6368', marginTop: 6, fontSize: 12 }}>
             {memoryCapturedAt
               ? `Sampled ${new Date(memoryCapturedAt).toLocaleTimeString()} (${memorySource ?? 'unknown source'})`
-              : 'Awaiting fresh sample…'}
+              : ''}
           </div>
         </div>
       ) : (

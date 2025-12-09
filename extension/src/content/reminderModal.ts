@@ -117,7 +117,7 @@ function renderOverlay(payload: ReminderPayload): void {
       const sourceLabel = payload.memorySource ?? 'unknown source';
       sampleMeta.textContent = `Sampled ${sampledAt} (${sourceLabel})`;
     } else {
-      sampleMeta.textContent = 'Awaiting fresh sample…';
+      sampleMeta.textContent = '';
     }
 
     metricsContainer.appendChild(metricsList);
