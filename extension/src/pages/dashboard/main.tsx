@@ -39,6 +39,7 @@ function DashboardApp(): JSX.Element {
   const [error, setError] = useState<string>('');
   const [migrationToast, setMigrationToast] = useState<string>('');
   const [jumpingTabId, setJumpingTabId] = useState<number | null>(null);
+  const [jumpError, setJumpError] = useState<string>('');
   const migrationToastRef = useRef('');
 
   useEffect(() => {
@@ -88,11 +89,13 @@ function DashboardApp(): JSX.Element {
     if (typeof tabId !== 'number') {
       return;
     }
+    setJumpError('');
     setJumpingTabId(tabId);
-    chrome.runtime.sendMessage({ type: 'activate-tab', tabId }, () => {
-      const error = chrome.runtime.lastError;
-      if (error) {
-        console.error('Failed to jump to tab', error.message);
+    chrome.runtime.sendMessage({ type: 'activate-tab', tabId }, (response: { success: boolean; error?: string } | undefined) => {
+      const runtimeError = chrome.runtime.lastError;
+      if (runtimeError || !response?.success) {
+        const messageText = runtimeError?.message ?? response?.error ?? 'Failed to switch tabs.';
+        setJumpError(messageText);
         setJumpingTabId(null);
         return;
       }
@@ -113,6 +116,7 @@ function DashboardApp(): JSX.Element {
 
       {loading && <p>Loading telemetry...</p>}
       {error && <p style={{ color: '#d93025' }}>{error}</p>}
+      {jumpError && <p style={{ color: '#d93025' }}>{jumpError}</p>}
       {migrationToast && (
         <p
           style={{

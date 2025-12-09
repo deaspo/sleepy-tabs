@@ -22,6 +22,7 @@ const manifest = defineManifest({
     'alarms',
     'storage',
     'tabs',
+    'windows',
     'scripting',
     'notifications',
     'sidePanel',

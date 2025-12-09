@@ -21,6 +21,7 @@ const DEBUGGER_PROBE_INTERVAL_MINUTES = 0.5;
 const DEBUGGER_SAMPLE_STALE_MS = 60 * 1000;
 const DEBUGGER_MAX_TABS_PER_RUN = 1;
 const activeDebuggerSessions = new Set<number>();
+let consentPromptPromise: Promise<void> | null = null;
 
 interface PerformanceMetricsResponse {
   metrics?: Array<{ name: string; value: number }>;
@@ -61,6 +62,7 @@ async function bootstrap(): Promise<void> {
   reflectNativeHostStatus('connecting');
   await manager.init();
   manager.scheduleSettingsPoll();
+  await ensureConsentPrompt();
   setupCompanionBridge();
 }
 
@@ -271,15 +273,40 @@ function focusWindow(windowId: number): Promise<void> {
   });
 }
 
+async function ensureConsentPrompt(): Promise<void> {
+  if (consentPromptPromise) {
+    return consentPromptPromise;
+  }
+  consentPromptPromise = (async () => {
+    const consent = await getConsentState();
+    if (consent.accepted) {
+      return;
+    }
+    try {
+      await new Promise<void>((resolve, reject) => {
+        chrome.tabs.create({ url: chrome.runtime.getURL('src/pages/consent/index.html') }, () => {
+          const error = chrome.runtime.lastError;
+          if (error) {
+            reject(new Error(error.message));
+            return;
+          }
+          resolve();
+        });
+      });
+    } catch (error) {
+      console.error('Failed to open consent page', error);
+    }
+  })()
+    .finally(() => {
+      consentPromptPromise = null;
+    });
+  return consentPromptPromise;
+}
+
 void bootstrap();
 
 chrome.runtime.onInstalled.addListener(async () => {
-  const consent = await getConsentState();
-  if (!consent.accepted) {
-    await chrome.tabs.create({
-      url: chrome.runtime.getURL('src/pages/consent/index.html')
-    });
-  }
+  await ensureConsentPrompt();
 });
 
 chrome.runtime.onStartup.addListener(() => {
