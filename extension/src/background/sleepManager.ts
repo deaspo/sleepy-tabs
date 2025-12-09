@@ -5,7 +5,7 @@ import {
   deleteTabState,
   updateSettings
 } from '../shared/storage';
-import { DEFAULT_MEMORY_THRESHOLD_MB } from '../shared/constants';
+import { DEFAULT_MEMORY_THRESHOLD_MB, DEFAULT_REMINDER_TIMEOUT_SECONDS } from '../shared/constants';
 import {
   postToCompanion,
   sendRuntimeMessage
@@ -41,6 +41,7 @@ export class SleepManager {
   private processFallbackSupported = false;
   private processFallbackReason?: string;
   private activeReminderWindows = new Map<number, number>();
+  private reminderTimeouts = new Map<number, ReturnType<typeof setTimeout>>();
 
   async init(): Promise<void> {
     this.settings = await getSettings();
@@ -116,6 +117,8 @@ export class SleepManager {
   async removeTab(tabId: number): Promise<void> {
     await deleteTabState(tabId);
     this.processSampleCache.delete(tabId);
+    this.clearReminderTimeout(tabId);
+    await this.closeExistingReminderWindow(tabId);
     postToCompanion({ type: 'untrack-tab', tabId });
   }
 
@@ -170,6 +173,11 @@ export class SleepManager {
 
     tabState.pendingReminder = action;
     await setTabState(state);
+    this.scheduleReminderTimeout(tabId, action, reason, reminderMemoryUsage, {
+      totalHeapMb: tabState.totalHeapMb,
+      fullPageMemoryMb: tabState.fullPageMemoryMb,
+      heapLimitMb: tabState.heapLimitMb
+    });
 
     const liveTab = await chrome.tabs.get(tabId).catch(() => null);
     const requiresStandalone = !this.canInjectReminder(liveTab);
@@ -182,6 +190,7 @@ export class SleepManager {
         await this.launchStandaloneReminder(tabId, action, reason, reminderMemoryUsage, tabState);
       } catch (fallbackError) {
         console.warn('Standalone reminder failed, proceeding automatically', fallbackError);
+        this.clearReminderTimeout(tabId);
         await this.executeAction(tabId, action, reason, reminderMemoryUsage, true, {
           totalHeapMb: tabState.totalHeapMb,
           fullPageMemoryMb: tabState.fullPageMemoryMb,
@@ -215,6 +224,7 @@ export class SleepManager {
         await this.launchStandaloneReminder(tabId, action, reason, reminderMemoryUsage, tabState);
       } catch (fallbackError) {
         console.warn('Standalone reminder failed, proceeding automatically', fallbackError);
+        this.clearReminderTimeout(tabId);
         await this.executeAction(tabId, action, reason, reminderMemoryUsage, true, {
           totalHeapMb: tabState.totalHeapMb,
           fullPageMemoryMb: tabState.fullPageMemoryMb,
@@ -242,6 +252,7 @@ export class SleepManager {
     delete tabState.pendingReminder;
     await setTabState(state);
 
+    this.clearReminderTimeout(tabId);
     await this.closeExistingReminderWindow(tabId);
 
     if (proceed) {
@@ -663,6 +674,55 @@ export class SleepManager {
       }
       this.activeReminderWindows.delete(tabId);
     }
+  }
+
+  private scheduleReminderTimeout(
+    tabId: number,
+    action: SleepAction,
+    reason: TabTelemetryRecord['reason'],
+    memoryUsageMb: number | undefined,
+    metrics: { totalHeapMb?: number; fullPageMemoryMb?: number; heapLimitMb?: number }
+  ): void {
+    const timeoutSeconds = this.settings?.reminderTimeoutSeconds ?? DEFAULT_REMINDER_TIMEOUT_SECONDS;
+    const timeoutMs = Math.max(1, timeoutSeconds) * 1000;
+    this.clearReminderTimeout(tabId);
+    const handle = setTimeout(() => {
+      void this.handleReminderTimeout(tabId, action, reason, memoryUsageMb, metrics);
+    }, timeoutMs);
+    this.reminderTimeouts.set(tabId, handle);
+  }
+
+  private clearReminderTimeout(tabId: number): void {
+    const handle = this.reminderTimeouts.get(tabId);
+    if (handle) {
+      clearTimeout(handle);
+      this.reminderTimeouts.delete(tabId);
+    }
+  }
+
+  private async handleReminderTimeout(
+    tabId: number,
+    action: SleepAction,
+    reason: TabTelemetryRecord['reason'],
+    memoryUsageMb: number | undefined,
+    metrics: { totalHeapMb?: number; fullPageMemoryMb?: number; heapLimitMb?: number }
+  ): Promise<void> {
+    this.reminderTimeouts.delete(tabId);
+    await this.closeExistingReminderWindow(tabId);
+    const state = await getTabState();
+    const tabState = state[tabId];
+    if (tabState?.pendingReminder) {
+      delete tabState.pendingReminder;
+      await setTabState(state);
+    }
+    const resolvedMetrics = {
+      totalHeapMb: metrics.totalHeapMb ?? tabState?.totalHeapMb,
+      fullPageMemoryMb: metrics.fullPageMemoryMb ?? tabState?.fullPageMemoryMb,
+      heapLimitMb: metrics.heapLimitMb ?? tabState?.heapLimitMb
+    };
+    const resolvedMemoryUsage =
+      typeof memoryUsageMb === 'number' ? memoryUsageMb : this.resolveTabMemoryUsage(tabState);
+    await this.executeAction(tabId, action, reason, resolvedMemoryUsage, true, resolvedMetrics);
   }
 
   private async launchStandaloneReminder(
