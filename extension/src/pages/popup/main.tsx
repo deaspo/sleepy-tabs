@@ -197,63 +197,75 @@ function PopupApp(): JSX.Element {
     return <div style={{ padding: 16 }}>Loading...</div>;
   }
 
+  const hasMemorySample =
+    (typeof state.memoryUsageMb === 'number' && state.memoryUsageMb > 0) ||
+    (typeof state.totalHeapMb === 'number' && state.totalHeapMb > 0) ||
+    (typeof state.heapLimitMb === 'number' && state.heapLimitMb > 0) ||
+    (typeof state.fullPageMemoryMb === 'number' && state.fullPageMemoryMb > 0);
+
   return (
     <div style={{ width: 320, padding: 16, fontFamily: 'system-ui, sans-serif' }}>
       <h1 style={{ fontSize: 18, margin: '0 0 8px 0' }}>Sleepy Tabs</h1>
       <p style={{ margin: '0 0 8px 0', fontSize: 14 }}>{state.title}</p>
-      <div
-        style={{
-          fontSize: 12,
-          background: '#f1f3f4',
-          borderRadius: 8,
-          padding: '8px 10px',
-          marginBottom: 12,
-          lineHeight: 1.4
-        }}
-      >
-        <strong style={{ display: 'block', marginBottom: 4 }}>
-          Latest memory sample
-          {state.memorySource && (
-            <span
-              style={{
-                marginLeft: 6,
-                padding: '2px 6px',
-                borderRadius: 999,
-                background: '#e8eaed',
-                fontSize: 10,
-                textTransform: 'uppercase',
-                letterSpacing: 0.5,
-                color: '#5f6368'
-              }}
-            >
-              {state.memorySource}
-            </span>
+      {hasMemorySample && (
+        <div
+          style={{
+            fontSize: 12,
+            background: '#f1f3f4',
+            borderRadius: 8,
+            padding: '8px 10px',
+            marginBottom: 12,
+            lineHeight: 1.4
+          }}
+        >
+          <strong style={{ display: 'block', marginBottom: 4 }}>
+            Latest memory sample
+            {state.memorySource && (
+              <span
+                style={{
+                  marginLeft: 6,
+                  padding: '2px 6px',
+                  borderRadius: 999,
+                  background: '#e8eaed',
+                  fontSize: 10,
+                  textTransform: 'uppercase',
+                  letterSpacing: 0.5,
+                  color: '#5f6368'
+                }}
+              >
+                {state.memorySource}
+              </span>
+            )}
+          </strong>
+          {typeof state.memoryUsageMb === 'number' && state.memoryUsageMb > 0 && (
+            <div>JS heap: {state.memoryUsageMb.toFixed(2)} MB</div>
           )}
-        </strong>
-        <div>{state.memoryUsageMb ? `JS heap: ${state.memoryUsageMb.toFixed(2)} MB` : 'JS heap: unknown'}</div>
-        {typeof state.fullPageMemoryMb === 'number' && (
-          <div>Full page: {state.fullPageMemoryMb.toFixed(2)} MB</div>
-        )}
-        {typeof state.totalHeapMb === 'number' && (
-          <div>
-            Heap total: {state.totalHeapMb.toFixed(2)} MB
-            {typeof state.heapLimitMb === 'number' ? ` / ${state.heapLimitMb.toFixed(2)} MB limit` : ''}
-          </div>
-        )}
-        {!state.totalHeapMb && typeof state.heapLimitMb === 'number' && (
-          <div>Heap limit: {state.heapLimitMb.toFixed(2)} MB</div>
-        )}
-        <div style={{ marginTop: 4, color: '#5f6368' }}>
-          {state.memoryCapturedAt
-            ? `Sampled ${new Date(state.memoryCapturedAt).toLocaleTimeString()} (${state.memorySource ?? 'unknown source'})`
-            : 'Awaiting fresh sample…'}
+          {typeof state.fullPageMemoryMb === 'number' && state.fullPageMemoryMb > 0 && (
+            <div>Full page: {state.fullPageMemoryMb.toFixed(2)} MB</div>
+          )}
+          {typeof state.totalHeapMb === 'number' && state.totalHeapMb > 0 && (
+            <div>
+              Heap total: {state.totalHeapMb.toFixed(2)} MB
+              {typeof state.heapLimitMb === 'number' && state.heapLimitMb > 0
+                ? ` / ${state.heapLimitMb.toFixed(2)} MB limit`
+                : ''}
+            </div>
+          )}
+          {(!state.totalHeapMb || state.totalHeapMb <= 0) && typeof state.heapLimitMb === 'number' && state.heapLimitMb > 0 && (
+            <div>Heap limit: {state.heapLimitMb.toFixed(2)} MB</div>
+          )}
+          {state.memoryCapturedAt && (
+            <div style={{ marginTop: 4, color: '#5f6368' }}>
+              {`Sampled ${new Date(state.memoryCapturedAt).toLocaleTimeString()} (${state.memorySource ?? 'unknown source'})`}
+            </div>
+          )}
+          {state.memorySource === 'processes' && (
+            <div style={{ marginTop: 4, color: '#5f6368' }}>
+              Using Chrome processes fallback (Task Manager values)
+            </div>
+          )}
         </div>
-        {state.memorySource === 'processes' && (
-          <div style={{ marginTop: 4, color: '#5f6368' }}>
-            Using Chrome processes fallback (Task Manager values)
-          </div>
-        )}
-      </div>
+      )}
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
         <button
