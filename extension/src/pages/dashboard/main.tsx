@@ -38,8 +38,6 @@ function DashboardApp(): JSX.Element {
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string>('');
   const [migrationToast, setMigrationToast] = useState<string>('');
-  const [jumpingTabId, setJumpingTabId] = useState<number | null>(null);
-  const [jumpError, setJumpError] = useState<string>('');
   const migrationToastRef = useRef('');
 
   useEffect(() => {
@@ -85,27 +83,6 @@ function DashboardApp(): JSX.Element {
     [records]
   );
 
-  const handleBringTabToFront = (tabId: number): void => {
-    if (typeof tabId !== 'number') {
-      return;
-    }
-    setJumpError('');
-    setJumpingTabId(tabId);
-    chrome.runtime.sendMessage(
-      { type: 'bring-tab-to-front', tabId },
-      (response: { success: boolean; error?: string } | undefined) => {
-        const runtimeError = chrome.runtime.lastError;
-        if (runtimeError || !response?.success) {
-          const messageText = runtimeError?.message ?? response?.error ?? 'Failed to switch tabs.';
-          setJumpError(messageText);
-          setJumpingTabId(null);
-          return;
-        }
-        window.close();
-      }
-    );
-  };
-
   return (
     <div
       style={{ fontFamily: 'system-ui, sans-serif', padding: '24px', maxWidth: 960, minWidth: 320, margin: '0 auto' }}
@@ -119,7 +96,6 @@ function DashboardApp(): JSX.Element {
 
       {loading && <p>Loading telemetry...</p>}
       {error && <p style={{ color: '#d93025' }}>{error}</p>}
-      {jumpError && <p style={{ color: '#d93025' }}>{jumpError}</p>}
       {migrationToast && (
         <p
           style={{
@@ -174,7 +150,6 @@ function DashboardApp(): JSX.Element {
                 <th style={{ padding: '8px 12px' }}>Reason</th>
                 {/* <th style={{ padding: '8px 12px' }}>Memory (MB)</th> */}
                 <th style={{ padding: '8px 12px' }}>Title</th>
-                <th style={{ padding: '8px 12px' }}>Jump to tab</th>
               </tr>
             </thead>
             <tbody>
@@ -191,23 +166,6 @@ function DashboardApp(): JSX.Element {
                     <div style={{ fontSize: 11, color: '#5f6368' }}>{formatMemoryDetail(record)}</div>
                   </td> */}
                   <td style={{ padding: '8px 12px' }}>{record.title ?? 'Untitled'}</td>
-                  <td style={{ padding: '8px 12px' }}>
-                    <button
-                      type="button"
-                      onClick={() => handleBringTabToFront(record.tabId)}
-                      disabled={typeof record.tabId !== 'number' || jumpingTabId === record.tabId}
-                      style={{
-                        padding: '6px 10px',
-                        borderRadius: 4,
-                        border: '1px solid #1a73e8',
-                        background: jumpingTabId === record.tabId ? '#e8f0fe' : '#fff',
-                        color: '#1a73e8',
-                        cursor: jumpingTabId === record.tabId ? 'wait' : 'pointer'
-                      }}
-                    >
-                      {jumpingTabId === record.tabId ? 'Switching…' : 'Jump to tab'}
-                    </button>
-                  </td>
                 </tr>
               ))}
             </tbody>

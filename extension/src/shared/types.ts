@@ -128,11 +128,6 @@ export interface ToggleIgnoreMessage {
   ignored: boolean;
 }
 
-export interface BringTabToFrontMessage {
-  type: 'bring-tab-to-front';
-  tabId: number;
-}
-
 export interface TabMemoryProbeMessage {
   type: 'tab-memory-probe';
   memoryUsageMb: number;
@@ -168,7 +163,6 @@ export type RuntimeMessage =
   | ReminderDecisionMessage
   | ManualActionMessage
   | ToggleIgnoreMessage
-  | BringTabToFrontMessage
   | TabStateUpdatedMessage
   | SleepAllTabsMessage
   | NativeHostStatusMessage

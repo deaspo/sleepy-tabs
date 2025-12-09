@@ -4,7 +4,6 @@ import { getRecentTelemetry } from '../shared/telemetryDb';
 import { getConsentState, getSettings, getTabState, setNativeHostStatus } from '../shared/storage';
 import type {
   CompanionInboundMessage,
-  BringTabToFrontMessage,
   ManualActionMessage,
   NativeHostStatus,
   ReminderDecisionMessage,
@@ -226,25 +225,6 @@ function bytesToMb(bytes: number): number {
   return Math.round((bytes / 1048576) * 100) / 100;
 }
 
-async function bringTabToFrontViaDebugger(tabId: number): Promise<void> {
-  if (activeDebuggerSessions.has(tabId)) {
-    throw new Error('Tab is busy with another debugger operation.');
-  }
-  const target: chrome.debugger.Debuggee = { tabId };
-  let attached = false;
-  activeDebuggerSessions.add(tabId);
-  try {
-    await attachDebugger(target);
-    attached = true;
-    await sendDebuggerCommand(target, 'Page.bringToFront', {});
-  } finally {
-    if (attached) {
-      await detachDebugger(target);
-    }
-    activeDebuggerSessions.delete(tabId);
-  }
-}
-
 async function ensureConsentPrompt(): Promise<void> {
   if (consentPromptPromise) {
     return consentPromptPromise;
@@ -368,18 +348,6 @@ chrome.runtime.onMessage.addListener((message: RuntimeMessage, sender, sendRespo
       void manager.updateTabMemory(senderTabId, message.memoryUsageMb, 'probe');
     }
     return false;
-  }
-
-  if (message.type === 'bring-tab-to-front') {
-    const bringMessage = message as BringTabToFrontMessage;
-    void bringTabToFrontViaDebugger(bringMessage.tabId)
-      .then(() => sendResponse({ success: true }))
-      .catch((error: unknown) => {
-        console.error('Failed to bring tab to front', error);
-        const messageText = error instanceof Error ? error.message : String(error);
-        sendResponse({ success: false, error: messageText });
-      });
-    return true;
   }
 
   if (message.type === 'sleep-all-tabs') {
