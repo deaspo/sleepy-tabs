@@ -11,14 +11,20 @@ function ConsentApp(): JSX.Element {
   const handleAccept = () => {
     setSubmitting(true);
     const payload: ConsentState = { accepted: true, acceptedAt: Date.now() };
-    chrome.runtime.sendMessage(
+    const runtime = chrome?.runtime;
+    if (!runtime?.sendMessage) {
+      setError('Extension runtime unavailable. Please reload the extension and try again.');
+      setSubmitting(false);
+      return;
+    }
+    runtime.sendMessage(
       {
         type: 'consent-updated',
         payload
       },
       (response) => {
-        if (chrome.runtime.lastError) {
-          setError(chrome.runtime.lastError.message ?? 'Failed to record consent');
+        if (runtime.lastError) {
+          setError(runtime.lastError.message ?? 'Failed to record consent');
           setSubmitting(false);
           return;
         }

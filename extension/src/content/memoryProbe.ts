@@ -29,7 +29,13 @@ function publishMeasurement(): void {
     return;
   }
 
-  chrome.runtime.sendMessage(
+  const runtime = chrome?.runtime;
+  if (!runtime?.sendMessage) {
+    console.debug('Sleepy Tabs: runtime unavailable, skipping memory probe dispatch.');
+    return;
+  }
+
+  runtime.sendMessage(
     {
       type: 'tab-memory-probe',
       memoryUsageMb: bytesToMb(memory.usedJSHeapSize),
@@ -39,7 +45,7 @@ function publishMeasurement(): void {
     },
     () => {
       // Swallow errors triggered when the service worker is asleep.
-      const error = chrome.runtime.lastError;
+      const error = runtime.lastError;
       if (error) {
         console.debug('Memory probe message not delivered', error.message);
       }
