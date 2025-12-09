@@ -12,6 +12,7 @@ import {
 } from '../shared/messaging';
 import { saveTelemetry } from '../shared/telemetryDb';
 import type {
+  CapabilityReport,
   ConsentState,
   NativeHostStatus,
   SleepAction,
@@ -37,6 +38,8 @@ export class SleepManager {
   private consent: ConsentState | null = null;
   private processFallbackHandle: ReturnType<typeof setInterval> | null = null;
   private processSampleCache = new Map<number, { processId: number; lastSampledAt: number }>();
+  private processFallbackSupported = false;
+  private processFallbackReason?: string;
 
   async init(): Promise<void> {
     this.settings = await getSettings();
@@ -411,7 +414,11 @@ export class SleepManager {
   }
 
   handleNativeHostStatusChange(status: NativeHostStatus): void {
-    if (!chrome.processes?.getProcessInfo || !this.settings?.enableProcessFallback) {
+    if (
+      !chrome.processes?.getProcessInfo ||
+      !this.settings?.enableProcessFallback ||
+      !this.processFallbackSupported
+    ) {
       this.stopProcessFallback();
       return;
     }
@@ -426,7 +433,8 @@ export class SleepManager {
     if (
       this.processFallbackHandle ||
       !chrome.processes?.getProcessInfo ||
-      !this.settings?.enableProcessFallback
+      !this.settings?.enableProcessFallback ||
+      !this.processFallbackSupported
     ) {
       return;
     }
@@ -445,7 +453,11 @@ export class SleepManager {
   }
 
   private async collectProcessSamples(): Promise<void> {
-    if (!chrome.processes?.getProcessInfo || !this.settings?.enableProcessFallback) {
+    if (
+      !chrome.processes?.getProcessInfo ||
+      !this.settings?.enableProcessFallback ||
+      !this.processFallbackSupported
+    ) {
       return;
     }
 
@@ -586,6 +598,21 @@ export class SleepManager {
       return maxSample;
     }
     return tabState.memoryUsageMb ?? tabState.fullPageMemoryMb;
+  }
+
+  setProcessFallbackSupport(report: CapabilityReport): void {
+    this.processFallbackSupported = report.processFallbackSupported;
+    this.processFallbackReason = report.processFallbackReason;
+    if (!report.processFallbackSupported) {
+      this.stopProcessFallback();
+    }
+  }
+
+  getProcessFallbackSupport(): CapabilityReport {
+    return {
+      processFallbackSupported: this.processFallbackSupported,
+      processFallbackReason: this.processFallbackReason
+    };
   }
 
   private broadcastTabStateUpdate(tabId: number, tabState: TabState): void {

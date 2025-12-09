@@ -1,7 +1,7 @@
 import { useEffect, useState, type ChangeEvent, type FormEvent } from 'react';
 import ReactDOM from 'react-dom/client';
 
-import type { SleepSettings } from '../../shared/types';
+import type { CapabilityReport, SleepSettings } from '../../shared/types';
 import {
   DEFAULT_AUTO_FOCUS_ON_REMINDER,
   DEFAULT_ENABLE_FULL_PAGE_SAMPLING,
@@ -30,6 +30,7 @@ const initialSettings: SleepSettings = {
 function OptionsApp(): JSX.Element {
   const [settings, setSettings] = useState<SleepSettings>(initialSettings);
   const [status, setStatus] = useState<string>('');
+  const [capabilities, setCapabilities] = useState<CapabilityReport | null>(null);
 
   useEffect(() => {
     chrome.runtime.sendMessage({ type: 'request-settings' }, (response: SleepSettings) => {
@@ -38,6 +39,22 @@ function OptionsApp(): JSX.Element {
       }
     });
   }, []);
+
+  useEffect(() => {
+    chrome.runtime.sendMessage({ type: 'request-capabilities' }, (response: CapabilityReport) => {
+      if (response) {
+        setCapabilities(response);
+      } else {
+        setCapabilities({ processFallbackSupported: false, processFallbackReason: 'Unavailable' });
+      }
+    });
+  }, []);
+
+  useEffect(() => {
+    if (capabilities?.processFallbackSupported === false && settings.enableProcessFallback) {
+      setSettings((prev) => ({ ...prev, enableProcessFallback: false }));
+    }
+  }, [capabilities, settings.enableProcessFallback]);
 
   const handleChange = (key: keyof SleepSettings) => (event: ChangeEvent<HTMLInputElement>) => {
     const value = event.target.type === 'checkbox' ? event.target.checked : Number(event.target.value);
@@ -51,6 +68,8 @@ function OptionsApp(): JSX.Element {
       window.setTimeout(() => setStatus(''), 2000);
     });
   };
+
+  const processFallbackSupported = capabilities?.processFallbackSupported !== false;
 
   return (
     <div style={{ maxWidth: 640, margin: '24px auto', fontFamily: 'system-ui, sans-serif' }}>
@@ -148,8 +167,9 @@ function OptionsApp(): JSX.Element {
         <label style={{ display: 'flex', alignItems: 'flex-start', gap: 12 }}>
           <input
             type="checkbox"
-            checked={settings.enableProcessFallback}
+            checked={processFallbackSupported && settings.enableProcessFallback}
             onChange={handleChange('enableProcessFallback')}
+            disabled={!processFallbackSupported}
           />
           <span>
             <strong>Use Chrome processes fallback</strong>
@@ -161,7 +181,26 @@ function OptionsApp(): JSX.Element {
           </span>
         </label>
 
-        {settings.enableProcessFallback && (
+        {!processFallbackSupported && (
+          <div
+            style={{
+              border: '1px solid #f1c232',
+              background: '#fff8e1',
+              borderRadius: 8,
+              padding: '8px 12px',
+              fontSize: 13,
+              color: '#795548'
+            }}
+          >
+            Chrome limits the processes API to Dev/Beta/Canary builds, so this fallback is unavailable on
+            your current channel.
+            {capabilities?.processFallbackReason && (
+              <span style={{ display: 'block', marginTop: 4 }}>Details: {capabilities.processFallbackReason}</span>
+            )}
+          </div>
+        )}
+
+        {processFallbackSupported && settings.enableProcessFallback && (
           <div style={{ display: 'grid', gap: 8 }}>
             <label style={{ display: 'grid', gap: 4 }}>
               <span>Process fallback threshold (MB)</span>

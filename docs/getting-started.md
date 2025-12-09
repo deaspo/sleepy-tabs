@@ -116,7 +116,7 @@ Reminders normally bring the impacted tab to the foreground so you can immediate
 1. **Native companion (recommended):** Provides full CDP coverage, lifecycle control, and most accurate metrics.
 2. **Chrome debugger fallback:** When the companion is offline, the background service worker sporadically attaches via `chrome.debugger` to gather `Performance.getMetrics` samples. Chrome displays an infobar during each quick attach/detach cycle.
 3. **In-tab probes:** A lightweight content script calls `performance.memory` inside each tab when available, providing approximate JS heap usage without any special permissions.
-4. **Chrome processes fallback:** If enabled in Settings, Sleepy Tabs polls the `chrome.processes` API when all other sources are unavailable. These readings match Chrome's Task Manager and are only recorded after exceeding the **Process fallback threshold (MB)** slider on the Settings page. Each telemetry record notes which threshold fired so you can trace aggressive policies later.
+4. **Chrome processes fallback:** If enabled in Settings, Sleepy Tabs polls the `chrome.processes` API when all other sources are unavailable. These readings match Chrome's Task Manager and are only recorded after exceeding the **Process fallback threshold (MB)** slider on the Settings page. Each telemetry record notes which threshold fired so you can trace aggressive policies later. Chrome currently restricts this API to Dev/Beta/Canary builds, so the toggle stays disabled on stable releases to avoid misleading warnings.
 
 ## 10. Optional Quality Checks
 

@@ -13,6 +13,11 @@ export interface SleepSettings {
   processFallbackThresholdMb: number;
 }
 
+export interface CapabilityReport {
+  processFallbackSupported: boolean;
+  processFallbackReason?: string;
+}
+
 export interface ConsentState {
   accepted: boolean;
   acceptedAt?: number;
@@ -200,6 +205,10 @@ export interface NativeHostStatusMessage {
   status: NativeHostStatus;
 }
 
+export interface CapabilitiesRequestMessage {
+  type: 'request-capabilities';
+}
+
 export type RuntimeMessage =
   | SettingsUpdateMessage
   | SettingsRequestMessage
@@ -215,4 +224,5 @@ export type RuntimeMessage =
   | TabStateUpdatedMessage
   | SleepAllTabsMessage
   | NativeHostStatusMessage
-  | TabMemoryProbeMessage;
+  | TabMemoryProbeMessage
+  | CapabilitiesRequestMessage;

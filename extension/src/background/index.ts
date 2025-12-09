@@ -3,6 +3,7 @@ import { ensureNativePort, postToCompanion } from '../shared/messaging';
 import { getRecentTelemetry } from '../shared/telemetryDb';
 import { getConsentState, getSettings, getTabState, setNativeHostStatus } from '../shared/storage';
 import type {
+  CapabilityReport,
   CompanionInboundMessage,
   FocusTabMessage,
   ManualActionMessage,
@@ -22,6 +23,8 @@ const DEBUGGER_SAMPLE_STALE_MS = 60 * 1000;
 const DEBUGGER_MAX_TABS_PER_RUN = 1;
 const activeDebuggerSessions = new Set<number>();
 let consentPromptPromise: Promise<void> | null = null;
+let processCapabilityReport: CapabilityReport | null = null;
+let processCapabilityPromise: Promise<CapabilityReport> | null = null;
 
 interface PerformanceMetricsResponse {
   metrics?: Array<{ name: string; value: number }>;
@@ -64,7 +67,60 @@ async function bootstrap(): Promise<void> {
   await manager.init();
   manager.scheduleSettingsPoll();
   await ensureConsentPrompt();
+  void ensureProcessCapabilityDetection();
   setupCompanionBridge();
+}
+
+function ensureProcessCapabilityDetection(): Promise<CapabilityReport> {
+  if (processCapabilityReport) {
+    return Promise.resolve(processCapabilityReport);
+  }
+  if (processCapabilityPromise) {
+    return processCapabilityPromise;
+  }
+  processCapabilityPromise = detectProcessCapabilities()
+    .then((report) => {
+      processCapabilityReport = report;
+      manager.setProcessFallbackSupport(report);
+      manager.handleNativeHostStatusChange(currentNativeHostStatus);
+      return report;
+    })
+    .catch((error) => {
+      console.warn('Process capability detection failed', error);
+      const fallback: CapabilityReport = {
+        processFallbackSupported: false,
+        processFallbackReason: error instanceof Error ? error.message : String(error)
+      };
+      processCapabilityReport = fallback;
+      manager.setProcessFallbackSupport(fallback);
+      return fallback;
+    })
+    .finally(() => {
+      processCapabilityPromise = null;
+    });
+  return processCapabilityPromise;
+}
+
+function detectProcessCapabilities(): Promise<CapabilityReport> {
+  return new Promise((resolve) => {
+    if (!chrome.processes?.getProcessInfo) {
+      resolve({ processFallbackSupported: false, processFallbackReason: 'chrome.processes API unavailable' });
+      return;
+    }
+    try {
+      chrome.processes.getProcessInfo([], false, () => {
+        const error = chrome.runtime.lastError;
+        if (error) {
+          resolve({ processFallbackSupported: false, processFallbackReason: error.message });
+          return;
+        }
+        resolve({ processFallbackSupported: true });
+      });
+    } catch (error) {
+      const reason = error instanceof Error ? error.message : String(error);
+      resolve({ processFallbackSupported: false, processFallbackReason: reason });
+    }
+  });
 }
 
 function setupCompanionBridge(): void {
@@ -445,6 +501,15 @@ chrome.runtime.onMessage.addListener((message: RuntimeMessage, sender, sendRespo
         reminder.heapLimitMb
       )
       .then(() => sendResponse({ success: true }));
+    return true;
+  }
+
+  if (message.type === 'request-capabilities') {
+    ensureProcessCapabilityDetection()
+      .then((report) => sendResponse(report))
+      .catch(() =>
+        sendResponse({ processFallbackSupported: false, processFallbackReason: 'Detection failed' })
+      );
     return true;
   }
 

@@ -254,9 +254,6 @@ function PopupApp(): JSX.Element {
           </div>
         )}
       </div>
-      {/* <p style={{ margin: '0 0 12px 0', fontSize: 12, color: '#555', wordBreak: 'break-word' }}>
-        {state.url}
-      </p> */}
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
         <button
