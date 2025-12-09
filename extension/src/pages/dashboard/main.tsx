@@ -85,22 +85,25 @@ function DashboardApp(): JSX.Element {
     [records]
   );
 
-  const handleJumpToTab = (tabId: number): void => {
+  const handleBringTabToFront = (tabId: number): void => {
     if (typeof tabId !== 'number') {
       return;
     }
     setJumpError('');
     setJumpingTabId(tabId);
-    chrome.runtime.sendMessage({ type: 'activate-tab', tabId }, (response: { success: boolean; error?: string } | undefined) => {
-      const runtimeError = chrome.runtime.lastError;
-      if (runtimeError || !response?.success) {
-        const messageText = runtimeError?.message ?? response?.error ?? 'Failed to switch tabs.';
-        setJumpError(messageText);
-        setJumpingTabId(null);
-        return;
+    chrome.runtime.sendMessage(
+      { type: 'bring-tab-to-front', tabId },
+      (response: { success: boolean; error?: string } | undefined) => {
+        const runtimeError = chrome.runtime.lastError;
+        if (runtimeError || !response?.success) {
+          const messageText = runtimeError?.message ?? response?.error ?? 'Failed to switch tabs.';
+          setJumpError(messageText);
+          setJumpingTabId(null);
+          return;
+        }
+        window.close();
       }
-      window.close();
-    });
+    );
   };
 
   return (
@@ -191,7 +194,7 @@ function DashboardApp(): JSX.Element {
                   <td style={{ padding: '8px 12px' }}>
                     <button
                       type="button"
-                      onClick={() => handleJumpToTab(record.tabId)}
+                      onClick={() => handleBringTabToFront(record.tabId)}
                       disabled={typeof record.tabId !== 'number' || jumpingTabId === record.tabId}
                       style={{
                         padding: '6px 10px',

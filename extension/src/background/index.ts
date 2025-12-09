@@ -4,7 +4,7 @@ import { getRecentTelemetry } from '../shared/telemetryDb';
 import { getConsentState, getSettings, getTabState, setNativeHostStatus } from '../shared/storage';
 import type {
   CompanionInboundMessage,
-  ActivateTabMessage,
+  BringTabToFrontMessage,
   ManualActionMessage,
   NativeHostStatus,
   ReminderDecisionMessage,
@@ -226,51 +226,23 @@ function bytesToMb(bytes: number): number {
   return Math.round((bytes / 1048576) * 100) / 100;
 }
 
-async function activateTabAndFocusWindow(tabId: number): Promise<void> {
-  const tab = await getTab(tabId);
-  await activateTab(tabId);
-  if (typeof tab.windowId === 'number') {
-    await focusWindow(tab.windowId);
+async function bringTabToFrontViaDebugger(tabId: number): Promise<void> {
+  if (activeDebuggerSessions.has(tabId)) {
+    throw new Error('Tab is busy with another debugger operation.');
   }
-}
-
-function getTab(tabId: number): Promise<chrome.tabs.Tab> {
-  return new Promise((resolve, reject) => {
-    chrome.tabs.get(tabId, (tab) => {
-      const error = chrome.runtime.lastError;
-      if (error) {
-        reject(new Error(error.message));
-        return;
-      }
-      resolve(tab);
-    });
-  });
-}
-
-function activateTab(tabId: number): Promise<chrome.tabs.Tab> {
-  return new Promise((resolve, reject) => {
-    chrome.tabs.update(tabId, { active: true }, (tab) => {
-      const error = chrome.runtime.lastError;
-      if (error || !tab) {
-        reject(new Error(error?.message ?? 'Failed to activate tab'));
-        return;
-      }
-      resolve(tab);
-    });
-  });
-}
-
-function focusWindow(windowId: number): Promise<void> {
-  return new Promise((resolve, reject) => {
-    chrome.windows.update(windowId, { focused: true }, () => {
-      const error = chrome.runtime.lastError;
-      if (error) {
-        reject(new Error(error.message));
-        return;
-      }
-      resolve();
-    });
-  });
+  const target: chrome.debugger.Debuggee = { tabId };
+  let attached = false;
+  activeDebuggerSessions.add(tabId);
+  try {
+    await attachDebugger(target);
+    attached = true;
+    await sendDebuggerCommand(target, 'Page.bringToFront', {});
+  } finally {
+    if (attached) {
+      await detachDebugger(target);
+    }
+    activeDebuggerSessions.delete(tabId);
+  }
 }
 
 async function ensureConsentPrompt(): Promise<void> {
@@ -398,12 +370,12 @@ chrome.runtime.onMessage.addListener((message: RuntimeMessage, sender, sendRespo
     return false;
   }
 
-  if (message.type === 'activate-tab') {
-    const activateMessage = message as ActivateTabMessage;
-    void activateTabAndFocusWindow(activateMessage.tabId)
+  if (message.type === 'bring-tab-to-front') {
+    const bringMessage = message as BringTabToFrontMessage;
+    void bringTabToFrontViaDebugger(bringMessage.tabId)
       .then(() => sendResponse({ success: true }))
       .catch((error: unknown) => {
-        console.error('Failed to activate tab', error);
+        console.error('Failed to bring tab to front', error);
         const messageText = error instanceof Error ? error.message : String(error);
         sendResponse({ success: false, error: messageText });
       });

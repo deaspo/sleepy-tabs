@@ -128,8 +128,8 @@ export interface ToggleIgnoreMessage {
   ignored: boolean;
 }
 
-export interface ActivateTabMessage {
-  type: 'activate-tab';
+export interface BringTabToFrontMessage {
+  type: 'bring-tab-to-front';
   tabId: number;
 }
 
@@ -168,7 +168,7 @@ export type RuntimeMessage =
   | ReminderDecisionMessage
   | ManualActionMessage
   | ToggleIgnoreMessage
-  | ActivateTabMessage
+  | BringTabToFrontMessage
   | TabStateUpdatedMessage
   | SleepAllTabsMessage
   | NativeHostStatusMessage
