@@ -40,6 +40,7 @@ export class SleepManager {
   private processSampleCache = new Map<number, { processId: number; lastSampledAt: number }>();
   private processFallbackSupported = false;
   private processFallbackReason?: string;
+  private activeReminderWindows = new Map<number, number>();
 
   async init(): Promise<void> {
     this.settings = await getSettings();
@@ -177,6 +178,7 @@ export class SleepManager {
         await this.focusTabIfPossible(tabId, tabState.windowId);
       }
       try {
+        await this.closeExistingReminderWindow(tabId);
         await this.launchStandaloneReminder(tabId, action, reason, reminderMemoryUsage, tabState);
       } catch (fallbackError) {
         console.warn('Standalone reminder failed, proceeding automatically', fallbackError);
@@ -209,6 +211,7 @@ export class SleepManager {
     } catch (error) {
       console.warn('Reminder message failed, attempting standalone reminder', error);
       try {
+        await this.closeExistingReminderWindow(tabId);
         await this.launchStandaloneReminder(tabId, action, reason, reminderMemoryUsage, tabState);
       } catch (fallbackError) {
         console.warn('Standalone reminder failed, proceeding automatically', fallbackError);
@@ -238,6 +241,8 @@ export class SleepManager {
     }
     delete tabState.pendingReminder;
     await setTabState(state);
+
+    await this.closeExistingReminderWindow(tabId);
 
     if (proceed) {
       await this.executeAction(tabId, action, reason, memoryUsageMb, false, {
@@ -648,6 +653,18 @@ export class SleepManager {
     }
   }
 
+  private async closeExistingReminderWindow(tabId: number): Promise<void> {
+    const existingWindowId = this.activeReminderWindows.get(tabId);
+    if (typeof existingWindowId === 'number') {
+      try {
+        await chrome.windows.remove(existingWindowId);
+      } catch (error) {
+        console.debug('Failed to close existing reminder window', error);
+      }
+      this.activeReminderWindows.delete(tabId);
+    }
+  }
+
   private async launchStandaloneReminder(
     tabId: number,
     action: SleepAction,
@@ -694,11 +711,14 @@ export class SleepManager {
           height: 520,
           focused: true
         },
-        () => {
+        (window) => {
           const lastError = chrome.runtime.lastError;
           if (lastError) {
             reject(new Error(lastError.message));
             return;
+          }
+          if (window?.id) {
+            this.activeReminderWindows.set(tabId, window.id);
           }
           resolve();
         }
