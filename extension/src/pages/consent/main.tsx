@@ -11,7 +11,7 @@ function ConsentApp(): JSX.Element {
   const handleAccept = () => {
     setSubmitting(true);
     const payload: ConsentState = { accepted: true, acceptedAt: Date.now() };
-    const runtime = chrome?.runtime;
+    const runtime = typeof chrome !== 'undefined' ? chrome.runtime : undefined;
     if (!runtime?.sendMessage) {
       setError('Extension runtime unavailable. Please reload the extension and try again.');
       setSubmitting(false);

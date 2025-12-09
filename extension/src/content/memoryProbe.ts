@@ -29,7 +29,7 @@ function publishMeasurement(): void {
     return;
   }
 
-  const runtime = chrome?.runtime;
+  const runtime = typeof chrome !== 'undefined' ? chrome.runtime : undefined;
   if (!runtime?.sendMessage) {
     console.debug('Sleepy Tabs: runtime unavailable, skipping memory probe dispatch.');
     return;
