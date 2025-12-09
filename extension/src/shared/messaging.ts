@@ -104,7 +104,12 @@ export function notifyReminderDecision(
   action: SleepAction,
   proceed: boolean,
   reason: TabTelemetryRecord['reason'],
-  memoryUsageMb?: number
+  metrics?: {
+    memoryUsageMb?: number;
+    totalHeapMb?: number;
+    heapLimitMb?: number;
+    fullPageMemoryMb?: number;
+  }
 ): void {
   chrome.runtime.sendMessage({
     type: 'reminder-decision',
@@ -112,6 +117,6 @@ export function notifyReminderDecision(
     action,
     proceed,
     reason,
-    memoryUsageMb
+    ...(metrics ?? {})
   });
 }

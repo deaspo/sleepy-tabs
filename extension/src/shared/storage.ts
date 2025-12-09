@@ -1,6 +1,10 @@
 import {
+  DEFAULT_AUTO_FOCUS_ON_REMINDER,
+  DEFAULT_ENABLE_FULL_PAGE_SAMPLING,
+  DEFAULT_ENABLE_PROCESS_FALLBACK,
   DEFAULT_INACTIVITY_TIMEOUT_MINUTES,
   DEFAULT_MEMORY_THRESHOLD_MB,
+  DEFAULT_PROCESS_THRESHOLD_MB,
   DEFAULT_REMINDER_TIMEOUT_SECONDS,
   SETTINGS_VERSION,
   STORAGE_KEYS
@@ -10,21 +14,71 @@ import type { ConsentState, NativeHostStatus, SleepSettings, TabState } from './
 export async function getSettings(): Promise<SleepSettings> {
   const result = await chrome.storage.local.get(STORAGE_KEYS.settings);
   const stored = result[STORAGE_KEYS.settings] as SleepSettings | undefined;
+  const defaults: SleepSettings = {
+    version: SETTINGS_VERSION,
+    inactivityTimeoutMinutes: DEFAULT_INACTIVITY_TIMEOUT_MINUTES,
+    memoryThresholdMb: DEFAULT_MEMORY_THRESHOLD_MB,
+    enableAutoReload: true,
+    enableAutoSleep: true,
+    reminderTimeoutSeconds: DEFAULT_REMINDER_TIMEOUT_SECONDS,
+    autoFocusOnReminder: DEFAULT_AUTO_FOCUS_ON_REMINDER,
+    enableFullPageSampling: DEFAULT_ENABLE_FULL_PAGE_SAMPLING,
+    enableProcessFallback: DEFAULT_ENABLE_PROCESS_FALLBACK,
+    processFallbackThresholdMb: DEFAULT_PROCESS_THRESHOLD_MB
+  };
 
-  if (!stored || stored.version !== SETTINGS_VERSION) {
-    const defaults: SleepSettings = {
-      version: SETTINGS_VERSION,
-      inactivityTimeoutMinutes: DEFAULT_INACTIVITY_TIMEOUT_MINUTES,
-      memoryThresholdMb: DEFAULT_MEMORY_THRESHOLD_MB,
-      enableAutoReload: true,
-      enableAutoSleep: true,
-      reminderTimeoutSeconds: DEFAULT_REMINDER_TIMEOUT_SECONDS
-    };
+  if (!stored) {
     await setSettings(defaults);
     return defaults;
   }
 
-  return stored;
+  const hasValidFullPageFlag = typeof stored.enableFullPageSampling === 'boolean';
+  const hasAutoFocusFlag = typeof stored.autoFocusOnReminder === 'boolean';
+  const hasProcessSettings =
+    typeof stored.enableProcessFallback === 'boolean' &&
+    typeof stored.processFallbackThresholdMb === 'number';
+  const needsVersionMigration = stored.version !== SETTINGS_VERSION;
+  const resolved: SleepSettings = needsVersionMigration
+    ? {
+        ...defaults,
+        ...stored,
+        version: SETTINGS_VERSION,
+        enableFullPageSampling: hasValidFullPageFlag
+          ? stored.enableFullPageSampling
+          : defaults.enableFullPageSampling,
+        autoFocusOnReminder: hasAutoFocusFlag
+          ? stored.autoFocusOnReminder
+          : defaults.autoFocusOnReminder,
+        enableProcessFallback: hasProcessSettings
+          ? stored.enableProcessFallback
+          : defaults.enableProcessFallback,
+        processFallbackThresholdMb: hasProcessSettings
+          ? stored.processFallbackThresholdMb
+          : defaults.processFallbackThresholdMb
+      }
+    : hasValidFullPageFlag && hasProcessSettings && hasAutoFocusFlag
+      ? stored
+      : {
+          ...stored,
+          enableFullPageSampling: hasValidFullPageFlag
+            ? stored.enableFullPageSampling
+            : defaults.enableFullPageSampling,
+          autoFocusOnReminder: hasAutoFocusFlag
+            ? stored.autoFocusOnReminder
+            : defaults.autoFocusOnReminder,
+          enableProcessFallback: hasProcessSettings
+            ? stored.enableProcessFallback
+            : defaults.enableProcessFallback,
+          processFallbackThresholdMb: hasProcessSettings
+            ? stored.processFallbackThresholdMb
+            : defaults.processFallbackThresholdMb
+        };
+
+  if (needsVersionMigration || resolved !== stored) {
+    await setSettings(resolved);
+  }
+
+  return resolved;
 }
 
 export async function setSettings(settings: SleepSettings): Promise<void> {

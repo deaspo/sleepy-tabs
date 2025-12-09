@@ -27,7 +27,8 @@ const manifest = defineManifest({
     'windows',
     'sidePanel',
     'nativeMessaging',
-    'debugger'
+    'debugger',
+    'processes'
   ],
   host_permissions: ['<all_urls>'],
   content_scripts: [

@@ -1,3 +1,6 @@
+import { STORAGE_KEYS } from '../shared/constants';
+import type { SleepSettings } from '../shared/types';
+
 const SAMPLE_INTERVAL_MS = 15000;
 const VISIBILITY_SAMPLE_DELAY_MS = 2000;
 
@@ -10,6 +13,31 @@ interface ChromePerformance extends Performance {
 }
 
 const perf = performance as ChromePerformance;
+const SETTINGS_KEY = STORAGE_KEYS.settings;
+let allowFullPageSampling = false;
+
+function refreshSamplingPreference(): void {
+  if (!chrome?.storage?.local) {
+    return;
+  }
+  chrome.storage.local.get(SETTINGS_KEY, (result) => {
+    const settings = result[SETTINGS_KEY] as SleepSettings | undefined;
+    allowFullPageSampling = Boolean(settings?.enableFullPageSampling);
+  });
+}
+
+if (chrome?.storage?.local) {
+  refreshSamplingPreference();
+  chrome.storage.onChanged.addListener((changes, areaName) => {
+    if (areaName !== 'local') {
+      return;
+    }
+    if (changes[SETTINGS_KEY]) {
+      const next = changes[SETTINGS_KEY].newValue as SleepSettings | undefined;
+      allowFullPageSampling = Boolean(next?.enableFullPageSampling);
+    }
+  });
+}
 
 function bytesToMb(bytes: number): number {
   return Math.round((bytes / 1048576) * 100) / 100;
@@ -19,7 +47,43 @@ function hasMemoryApi(): boolean {
   return Boolean(perf.memory && typeof perf.memory.usedJSHeapSize === 'number');
 }
 
-function publishMeasurement(): void {
+async function measureFullPageMemoryMb(): Promise<number | null> {
+  if (!allowFullPageSampling) {
+    return null;
+  }
+  const supportsFullPage =
+    typeof window !== 'undefined' && 'measureUserAgentSpecificMemory' in performance && window.crossOriginIsolated;
+
+  if (!supportsFullPage) {
+    return null;
+  }
+
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const result = await (performance as any).measureUserAgentSpecificMemory();
+    if (!result || typeof result !== 'object') {
+      return null;
+    }
+    const breakdown = (result as { breakdown?: Array<{ bytes?: number }> }).breakdown;
+    if (Array.isArray(breakdown)) {
+      const totalBytes = breakdown.reduce((sum: number, entry: { bytes?: number }) => sum + (entry?.bytes ?? 0), 0);
+      if (totalBytes > 0) {
+        return bytesToMb(totalBytes);
+      }
+    }
+    if (typeof (result as { bytes?: number }).bytes === 'number') {
+      return bytesToMb((result as { bytes: number }).bytes);
+    }
+  } catch (error) {
+    const name = error instanceof Error ? error.name : undefined;
+    if (name !== 'SecurityError') {
+      console.debug('measureUserAgentSpecificMemory failed', error);
+    }
+  }
+  return null;
+}
+
+async function publishMeasurement(): Promise<void> {
   if (!hasMemoryApi()) {
     return;
   }
@@ -35,22 +99,22 @@ function publishMeasurement(): void {
     return;
   }
 
-  runtime.sendMessage(
-    {
-      type: 'tab-memory-probe',
-      memoryUsageMb: bytesToMb(memory.usedJSHeapSize),
-      totalHeapMb: bytesToMb(memory.totalJSHeapSize),
-      heapLimitMb: bytesToMb(memory.jsHeapSizeLimit),
-      source: 'probe'
-    },
-    () => {
-      // Swallow errors triggered when the service worker is asleep.
-      const error = runtime.lastError;
-      if (error) {
-        console.debug('Memory probe message not delivered', error.message);
-      }
+  const payload = {
+    type: 'tab-memory-probe' as const,
+    memoryUsageMb: bytesToMb(memory.usedJSHeapSize),
+    totalHeapMb: bytesToMb(memory.totalJSHeapSize),
+    heapLimitMb: bytesToMb(memory.jsHeapSizeLimit),
+    fullPageMemoryMb: await measureFullPageMemoryMb() ?? undefined,
+    source: 'probe'
+  };
+
+  runtime.sendMessage(payload, () => {
+    // Swallow errors triggered when the service worker is asleep.
+    const error = runtime.lastError;
+    if (error) {
+      console.debug('Memory probe message not delivered', error.message);
     }
-  );
+  });
 }
 
 function scheduleSampling(): void {
@@ -59,17 +123,17 @@ function scheduleSampling(): void {
     if (document.visibilityState === 'hidden') {
       return;
     }
-    publishMeasurement();
+    void publishMeasurement();
   }, SAMPLE_INTERVAL_MS + jitter);
 }
 
 if (window.top === window && document.contentType !== 'application/pdf') {
   if (document.visibilityState === 'visible') {
-    publishMeasurement();
+    void publishMeasurement();
   } else {
     window.setTimeout(() => {
       if (document.visibilityState === 'visible') {
-        publishMeasurement();
+        void publishMeasurement();
       }
     }, VISIBILITY_SAMPLE_DELAY_MS);
   }
@@ -78,7 +142,7 @@ if (window.top === window && document.contentType !== 'application/pdf') {
 
   document.addEventListener('visibilitychange', () => {
     if (document.visibilityState === 'visible') {
-      publishMeasurement();
+      void publishMeasurement();
     }
   });
 }

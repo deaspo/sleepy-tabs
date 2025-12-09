@@ -13,15 +13,18 @@ import {
 import { saveTelemetry } from '../shared/telemetryDb';
 import type {
   ConsentState,
+  NativeHostStatus,
   SleepAction,
   SleepSettings,
-  TabMemorySource,
+  TabMemorySample,
   TabState,
   TabTelemetryRecord
 } from '../shared/types';
 
 export const WATCHDOG_ALARM = 'sleepy-tabs-watchdog';
 const SETTINGS_POLL_SECONDS = 30;
+const PROCESS_FALLBACK_INTERVAL_MS = 20000;
+const PROCESS_SAMPLE_REFRESH_MS = 60000;
 
 interface SleepAllResult {
   attempted: number;
@@ -32,6 +35,8 @@ interface SleepAllResult {
 export class SleepManager {
   private settings: SleepSettings | null = null;
   private consent: ConsentState | null = null;
+  private processFallbackHandle: ReturnType<typeof setInterval> | null = null;
+  private processSampleCache = new Map<number, { processId: number; lastSampledAt: number }>();
 
   async init(): Promise<void> {
     this.settings = await getSettings();
@@ -106,6 +111,7 @@ export class SleepManager {
 
   async removeTab(tabId: number): Promise<void> {
     await deleteTabState(tabId);
+    this.processSampleCache.delete(tabId);
     postToCompanion({ type: 'untrack-tab', tabId });
   }
 
@@ -130,7 +136,7 @@ export class SleepManager {
       const inactivityThresholdMs = settings.inactivityTimeoutMinutes * 60 * 1000;
       const shouldSleep = settings.enableAutoSleep && inactivityMs >= inactivityThresholdMs;
       const memoryThresholdMb = settings.memoryThresholdMb ?? DEFAULT_MEMORY_THRESHOLD_MB;
-      const memoryUsage = tabInfo.memoryUsageMb ?? 0;
+      const memoryUsage = Math.max(tabInfo.memoryUsageMb ?? 0, tabInfo.fullPageMemoryMb ?? 0);
       const shouldReload =
         settings.enableAutoReload && memoryUsage > memoryThresholdMb && !tab.discarded;
 
@@ -154,22 +160,61 @@ export class SleepManager {
       return;
     }
 
+    const reminderMemoryUsage =
+      typeof memoryUsageMb === 'number' ? memoryUsageMb : this.resolveTabMemoryUsage(tabState);
+    const shouldAutoFocus = this.settings?.autoFocusOnReminder !== false;
+
     tabState.pendingReminder = action;
     await setTabState(state);
 
+    const liveTab = await chrome.tabs.get(tabId).catch(() => null);
+    const requiresStandalone = !this.canInjectReminder(liveTab);
+    if (requiresStandalone) {
+      if (shouldAutoFocus) {
+        await this.focusTabIfPossible(tabId, tabState.windowId);
+      }
+      try {
+        await this.launchStandaloneReminder(tabId, action, reason, reminderMemoryUsage, tabState);
+      } catch (fallbackError) {
+        console.warn('Standalone reminder failed, proceeding automatically', fallbackError);
+        await this.executeAction(tabId, action, reason, reminderMemoryUsage, true, {
+          totalHeapMb: tabState.totalHeapMb,
+          fullPageMemoryMb: tabState.fullPageMemoryMb,
+          heapLimitMb: tabState.heapLimitMb
+        });
+      }
+      return;
+    }
+
     try {
-      await this.focusTabIfPossible(tabId, tabState.windowId);
+      if (shouldAutoFocus) {
+        await this.focusTabIfPossible(tabId, tabState.windowId);
+      }
       await chrome.tabs.sendMessage(tabId, {
         type: 'sleepy-tabs-reminder',
         tabId,
         action,
         timeoutSeconds: this.settings?.reminderTimeoutSeconds,
         reason,
-        memoryUsageMb
+        memoryUsageMb: reminderMemoryUsage,
+        totalHeapMb: tabState.totalHeapMb,
+        heapLimitMb: tabState.heapLimitMb,
+        fullPageMemoryMb: tabState.fullPageMemoryMb,
+        memorySource: tabState.memorySource,
+        memoryCapturedAt: tabState.memoryCapturedAt
       });
     } catch (error) {
-      console.warn('Reminder message failed, proceeding automatically', error);
-      await this.executeAction(tabId, action, reason, memoryUsageMb, true);
+      console.warn('Reminder message failed, attempting standalone reminder', error);
+      try {
+        await this.launchStandaloneReminder(tabId, action, reason, reminderMemoryUsage, tabState);
+      } catch (fallbackError) {
+        console.warn('Standalone reminder failed, proceeding automatically', fallbackError);
+        await this.executeAction(tabId, action, reason, reminderMemoryUsage, true, {
+          totalHeapMb: tabState.totalHeapMb,
+          fullPageMemoryMb: tabState.fullPageMemoryMb,
+          heapLimitMb: tabState.heapLimitMb
+        });
+      }
     }
   }
 
@@ -178,7 +223,10 @@ export class SleepManager {
     action: SleepAction,
     proceed: boolean,
     reason: TabTelemetryRecord['reason'],
-    memoryUsageMb?: number
+    memoryUsageMb?: number,
+    totalHeapMb?: number,
+    fullPageMemoryMb?: number,
+    heapLimitMb?: number
   ): Promise<void> {
     const state = await getTabState();
     const tabState = state[tabId];
@@ -189,7 +237,11 @@ export class SleepManager {
     await setTabState(state);
 
     if (proceed) {
-      await this.executeAction(tabId, action, reason, memoryUsageMb, false);
+      await this.executeAction(tabId, action, reason, memoryUsageMb, false, {
+        totalHeapMb,
+        fullPageMemoryMb,
+        heapLimitMb
+      });
     }
   }
 
@@ -198,7 +250,12 @@ export class SleepManager {
     action: SleepAction,
     reason: TabTelemetryRecord['reason'],
     memoryUsageMb: number | undefined,
-    autoDueToTimeout: boolean
+    autoDueToTimeout: boolean,
+    metrics?: {
+      totalHeapMb?: number;
+      fullPageMemoryMb?: number;
+      heapLimitMb?: number;
+    }
   ): Promise<void> {
     const stateSnapshot = await getTabState();
     const tabState = stateSnapshot[tabId];
@@ -216,7 +273,7 @@ export class SleepManager {
     }
 
     const resolvedMemoryUsage =
-      typeof memoryUsageMb === 'number' ? memoryUsageMb : tabState?.memoryUsageMb;
+      typeof memoryUsageMb === 'number' ? memoryUsageMb : this.resolveTabMemoryUsage(tabState);
 
     await this.logTelemetry({
       tabId,
@@ -225,8 +282,12 @@ export class SleepManager {
       action,
       reason: autoDueToTimeout ? 'timeout' : reason,
       memoryUsageMb: resolvedMemoryUsage,
+      totalHeapMb: metrics?.totalHeapMb ?? tabState?.totalHeapMb,
+      heapLimitMb: metrics?.heapLimitMb ?? tabState?.heapLimitMb,
+      fullPageMemoryMb: metrics?.fullPageMemoryMb ?? tabState?.fullPageMemoryMb,
       memorySource: tabState?.memorySource,
       memoryCapturedAt: tabState?.memoryCapturedAt,
+      processFallbackThresholdMb: tabState?.processFallbackThresholdMb,
       timestamp: Date.now(),
       critical: reason === 'memory'
     });
@@ -241,12 +302,10 @@ export class SleepManager {
     }
   }
 
-  async updateTabMemory(
-    tabId: number,
-    memoryUsageMb?: number,
-    source: TabMemorySource = 'companion'
-  ): Promise<void> {
-    if (typeof memoryUsageMb !== 'number' || Number.isNaN(memoryUsageMb)) {
+  async updateTabMemory(tabId: number, sample: TabMemorySample): Promise<void> {
+    const hasSample =
+      typeof sample.memoryUsageMb === 'number' || typeof sample.fullPageMemoryMb === 'number';
+    if (!hasSample) {
       return;
     }
 
@@ -256,9 +315,27 @@ export class SleepManager {
       return;
     }
 
-    tabState.memoryUsageMb = memoryUsageMb;
-    tabState.memorySource = source;
+    if (typeof sample.memoryUsageMb === 'number' && !Number.isNaN(sample.memoryUsageMb)) {
+      tabState.memoryUsageMb = sample.memoryUsageMb;
+    }
+    if (typeof sample.totalHeapMb === 'number' && !Number.isNaN(sample.totalHeapMb)) {
+      tabState.totalHeapMb = sample.totalHeapMb;
+    }
+    if (typeof sample.heapLimitMb === 'number' && !Number.isNaN(sample.heapLimitMb)) {
+      tabState.heapLimitMb = sample.heapLimitMb;
+    }
+    if (typeof sample.fullPageMemoryMb === 'number' && !Number.isNaN(sample.fullPageMemoryMb)) {
+      tabState.fullPageMemoryMb = sample.fullPageMemoryMb;
+    }
+
+    tabState.memorySource = sample.source;
     tabState.memoryCapturedAt = Date.now();
+    if (sample.source === 'processes' && typeof sample.processId === 'number') {
+      tabState.processId = sample.processId;
+      tabState.processSampledAt = tabState.memoryCapturedAt;
+    }
+    tabState.processFallbackThresholdMb =
+      sample.source === 'processes' ? this.settings?.processFallbackThresholdMb : undefined;
     if (!tabState.lastSeenAt) {
       tabState.lastSeenAt = Date.now();
     }
@@ -333,6 +410,126 @@ export class SleepManager {
     }, SETTINGS_POLL_SECONDS * 1000);
   }
 
+  handleNativeHostStatusChange(status: NativeHostStatus): void {
+    if (!chrome.processes?.getProcessInfo || !this.settings?.enableProcessFallback) {
+      this.stopProcessFallback();
+      return;
+    }
+    if (status === 'connected') {
+      this.stopProcessFallback();
+    } else {
+      this.startProcessFallback();
+    }
+  }
+
+  private startProcessFallback(): void {
+    if (
+      this.processFallbackHandle ||
+      !chrome.processes?.getProcessInfo ||
+      !this.settings?.enableProcessFallback
+    ) {
+      return;
+    }
+    this.processFallbackHandle = setInterval(() => {
+      void this.collectProcessSamples();
+    }, PROCESS_FALLBACK_INTERVAL_MS);
+    void this.collectProcessSamples();
+  }
+
+  private stopProcessFallback(): void {
+    if (this.processFallbackHandle) {
+      clearInterval(this.processFallbackHandle);
+      this.processFallbackHandle = null;
+    }
+    this.processSampleCache.clear();
+  }
+
+  private async collectProcessSamples(): Promise<void> {
+    if (!chrome.processes?.getProcessInfo || !this.settings?.enableProcessFallback) {
+      return;
+    }
+
+    const state = await getTabState();
+    const now = Date.now();
+    const candidateTabIds = new Set<number>();
+    for (const tab of Object.values(state)) {
+      if (!tab || tab.ignored) {
+        continue;
+      }
+      const lastCaptured = tab.memoryCapturedAt ?? 0;
+      if (now - lastCaptured >= PROCESS_SAMPLE_REFRESH_MS) {
+        candidateTabIds.add(tab.tabId);
+      }
+    }
+
+    if (candidateTabIds.size === 0) {
+      return;
+    }
+
+    const processInfo = await new Promise<chrome.processes.ProcessesMap>((resolve, reject) => {
+      chrome.processes.getProcessInfo(undefined, true, (info) => {
+        const error = chrome.runtime.lastError;
+        if (error) {
+          reject(new Error(error.message));
+          return;
+        }
+        resolve(info);
+      });
+    }).catch((error) => {
+      console.debug('Process fallback sampling failed', error);
+      return null;
+    });
+
+    if (!processInfo) {
+      return;
+    }
+
+    for (const process of Object.values(processInfo)) {
+      if (!Array.isArray(process.tasks) || process.tasks.length === 0) {
+        continue;
+      }
+      const memoryMb = this.processMemoryToMb(process);
+      if (typeof memoryMb !== 'number' || Number.isNaN(memoryMb)) {
+        continue;
+      }
+
+      for (const task of process.tasks) {
+        if (typeof task.tabId !== 'number' || !candidateTabIds.has(task.tabId)) {
+          continue;
+        }
+        const cacheEntry = this.processSampleCache.get(task.tabId);
+        if (cacheEntry && now - cacheEntry.lastSampledAt < PROCESS_SAMPLE_REFRESH_MS / 2) {
+          continue;
+        }
+        await this.updateTabMemory(task.tabId, {
+          memoryUsageMb: memoryMb,
+          source: 'processes',
+          processId: process.osProcessId ?? process.id
+        });
+        this.processSampleCache.set(task.tabId, {
+          processId: process.osProcessId ?? process.id ?? -1,
+          lastSampledAt: now
+        });
+      }
+    }
+  }
+
+  private processMemoryToMb(process: chrome.processes.ProcessInformation): number | undefined {
+    const privateKb = process.privateMemory ?? 0;
+    const sharedKb = process.sharedMemory ?? 0;
+    const totalMb = (privateKb + sharedKb) / 1024;
+    if (totalMb <= 0) {
+      return undefined;
+    }
+    if (this.settings) {
+      const threshold = this.settings.processFallbackThresholdMb ?? DEFAULT_MEMORY_THRESHOLD_MB;
+      if (totalMb < threshold) {
+        return undefined;
+      }
+    }
+    return Math.round(totalMb * 100) / 100;
+  }
+
   async syncTabMetadata(tab: chrome.tabs.Tab): Promise<void> {
     if (typeof tab.id !== 'number') {
       return;
@@ -363,13 +560,32 @@ export class SleepManager {
       ignored: existing?.ignored ?? false,
       pendingReminder: existing?.pendingReminder,
       memoryUsageMb: existing?.memoryUsageMb,
+      totalHeapMb: existing?.totalHeapMb,
+      heapLimitMb: existing?.heapLimitMb,
+      fullPageMemoryMb: existing?.fullPageMemoryMb,
       memorySource: existing?.memorySource,
       memoryCapturedAt: existing?.memoryCapturedAt,
+      processId: existing?.processId,
+      processSampledAt: existing?.processSampledAt,
+      processFallbackThresholdMb: existing?.processFallbackThresholdMb,
       url: existing?.url,
       title: existing?.title,
       windowId: existing?.windowId,
       ...overrides
     } satisfies TabState;
+  }
+
+  private resolveTabMemoryUsage(tabState?: TabState): number | undefined {
+    if (!tabState) {
+      return undefined;
+    }
+    const usage = tabState.memoryUsageMb ?? 0;
+    const fullPage = tabState.fullPageMemoryMb ?? 0;
+    const maxSample = Math.max(usage, fullPage);
+    if (maxSample > 0) {
+      return maxSample;
+    }
+    return tabState.memoryUsageMb ?? tabState.fullPageMemoryMb;
   }
 
   private broadcastTabStateUpdate(tabId: number, tabState: TabState): void {
@@ -382,6 +598,18 @@ export class SleepManager {
     });
   }
 
+  private canInjectReminder(tab: chrome.tabs.Tab | null): boolean {
+    if (!tab) {
+      return false;
+    }
+    const url = tab.url ?? '';
+    if (!url) {
+      return false;
+    }
+    const blockedSchemes = ['chrome://', 'edge://', 'about:', 'devtools://', 'file://', 'chrome-extension://'];
+    return !blockedSchemes.some((scheme) => url.startsWith(scheme));
+  }
+
   private async focusTabIfPossible(tabId: number, windowId?: number): Promise<void> {
     try {
       await chrome.tabs.update(tabId, { active: true });
@@ -391,5 +619,63 @@ export class SleepManager {
     } catch (error) {
       console.warn('Unable to auto-focus tab before reminder', error);
     }
+  }
+
+  private async launchStandaloneReminder(
+    tabId: number,
+    action: SleepAction,
+    reason: TabTelemetryRecord['reason'],
+    memoryUsageMb: number | undefined,
+    tabState: TabState
+  ): Promise<void> {
+    const reminderUrl = new URL(chrome.runtime.getURL('src/pages/reminder/index.html'));
+    reminderUrl.searchParams.set('tabId', String(tabId));
+    reminderUrl.searchParams.set('action', action);
+    reminderUrl.searchParams.set('reason', reason);
+    const timeoutSeconds = this.settings?.reminderTimeoutSeconds ?? 15;
+    reminderUrl.searchParams.set('timeoutSeconds', String(timeoutSeconds));
+
+    const preferredMemory =
+      typeof memoryUsageMb === 'number'
+        ? memoryUsageMb
+        : tabState.memoryUsageMb ?? tabState.fullPageMemoryMb;
+    if (typeof preferredMemory === 'number') {
+      reminderUrl.searchParams.set('memoryUsageMb', String(preferredMemory));
+    }
+    if (typeof tabState.totalHeapMb === 'number') {
+      reminderUrl.searchParams.set('totalHeapMb', String(tabState.totalHeapMb));
+    }
+    if (typeof tabState.fullPageMemoryMb === 'number') {
+      reminderUrl.searchParams.set('fullPageMemoryMb', String(tabState.fullPageMemoryMb));
+    }
+    if (typeof tabState.heapLimitMb === 'number') {
+      reminderUrl.searchParams.set('heapLimitMb', String(tabState.heapLimitMb));
+    }
+    if (typeof tabState.memoryCapturedAt === 'number') {
+      reminderUrl.searchParams.set('memoryCapturedAt', String(tabState.memoryCapturedAt));
+    }
+    if (tabState.memorySource) {
+      reminderUrl.searchParams.set('memorySource', tabState.memorySource);
+    }
+
+    await new Promise<void>((resolve, reject) => {
+      chrome.windows.create(
+        {
+          url: reminderUrl.toString(),
+          type: 'popup',
+          width: 420,
+          height: 520,
+          focused: true
+        },
+        () => {
+          const lastError = chrome.runtime.lastError;
+          if (lastError) {
+            reject(new Error(lastError.message));
+            return;
+          }
+          resolve();
+        }
+      );
+    });
   }
 }

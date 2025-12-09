@@ -8,6 +8,11 @@ type ReminderPayload = {
   timeoutSeconds?: number;
   reason: TabTelemetryRecord['reason'];
   memoryUsageMb?: number;
+  totalHeapMb?: number;
+  heapLimitMb?: number;
+  fullPageMemoryMb?: number;
+  memorySource?: TabTelemetryRecord['memorySource'];
+  memoryCapturedAt?: number;
 };
 
 const OVERLAY_ID = 'sleepy-tabs-reminder-overlay';
@@ -58,8 +63,65 @@ function renderOverlay(payload: ReminderPayload): void {
   const info = document.createElement('p');
   info.style.margin = '12px 0 16px';
   info.style.lineHeight = '1.5';
+  let metricsContainer: HTMLDivElement | null = null;
   if (payload.reason === 'memory') {
-    info.textContent = `This tab is using ${payload.memoryUsageMb ?? 'a lot of'} MB of memory. We can refresh it to reclaim resources.`;
+    const heapText =
+      typeof payload.memoryUsageMb === 'number'
+        ? `${payload.memoryUsageMb.toFixed(2)} MB`
+        : 'unknown';
+    info.textContent = `This tab looks heavy. Latest memory snapshot:`;
+
+    metricsContainer = document.createElement('div');
+    metricsContainer.style.fontSize = '13px';
+    metricsContainer.style.background = '#f7f9fc';
+    metricsContainer.style.border = '1px solid #e0e5f1';
+    metricsContainer.style.borderRadius = '8px';
+    metricsContainer.style.padding = '8px 12px';
+    metricsContainer.style.textAlign = 'left';
+
+    const metricsList = document.createElement('ul');
+    metricsList.style.listStyle = 'none';
+    metricsList.style.padding = '0';
+    metricsList.style.margin = '8px 0 0';
+
+    const heapItem = document.createElement('li');
+    heapItem.textContent = `JS heap: ${heapText}`;
+    metricsList.appendChild(heapItem);
+
+    if (typeof payload.fullPageMemoryMb === 'number') {
+      const fullPageItem = document.createElement('li');
+      fullPageItem.textContent = `Full page: ${payload.fullPageMemoryMb.toFixed(2)} MB`;
+      metricsList.appendChild(fullPageItem);
+    }
+
+    if (typeof payload.totalHeapMb === 'number') {
+      const totalHeapItem = document.createElement('li');
+      const limitSuffix =
+        typeof payload.heapLimitMb === 'number'
+          ? ` / ${payload.heapLimitMb.toFixed(2)} MB limit`
+          : '';
+      totalHeapItem.textContent = `Heap total: ${payload.totalHeapMb.toFixed(2)} MB${limitSuffix}`;
+      metricsList.appendChild(totalHeapItem);
+    } else if (typeof payload.heapLimitMb === 'number') {
+      const limitOnlyItem = document.createElement('li');
+      limitOnlyItem.textContent = `Heap limit: ${payload.heapLimitMb.toFixed(2)} MB`;
+      metricsList.appendChild(limitOnlyItem);
+    }
+
+    const sampleMeta = document.createElement('div');
+    sampleMeta.style.marginTop = '8px';
+    sampleMeta.style.color = '#5f6368';
+    sampleMeta.style.fontSize = '12px';
+    if (payload.memoryCapturedAt) {
+      const sampledAt = new Date(payload.memoryCapturedAt).toLocaleTimeString();
+      const sourceLabel = payload.memorySource ?? 'unknown source';
+      sampleMeta.textContent = `Sampled ${sampledAt} (${sourceLabel})`;
+    } else {
+      sampleMeta.textContent = 'Awaiting fresh sample…';
+    }
+
+    metricsContainer.appendChild(metricsList);
+    metricsContainer.appendChild(sampleMeta);
   } else {
     info.textContent = 'This tab has been inactive for a while. We can pause it to save resources.';
   }
@@ -97,6 +159,9 @@ function renderOverlay(payload: ReminderPayload): void {
 
   panel.appendChild(heading);
   panel.appendChild(info);
+  if (metricsContainer) {
+    panel.appendChild(metricsContainer);
+  }
   panel.appendChild(countdown);
   panel.appendChild(buttons);
 
@@ -111,7 +176,12 @@ function renderOverlay(payload: ReminderPayload): void {
     if (remaining <= 0) {
       window.clearInterval(interval);
       removeOverlay();
-      notifyReminderDecision(payload.tabId, payload.action, true, payload.reason, payload.memoryUsageMb);
+      notifyReminderDecision(payload.tabId, payload.action, true, payload.reason, {
+        memoryUsageMb: payload.memoryUsageMb,
+        totalHeapMb: payload.totalHeapMb,
+        heapLimitMb: payload.heapLimitMb,
+        fullPageMemoryMb: payload.fullPageMemoryMb
+      });
     } else {
       countdown.textContent = `Taking action in ${remaining} seconds...`;
     }
@@ -120,7 +190,12 @@ function renderOverlay(payload: ReminderPayload): void {
   const sendDecision = (proceed: boolean) => {
     window.clearInterval(interval);
     removeOverlay();
-    notifyReminderDecision(payload.tabId, payload.action, proceed, payload.reason, payload.memoryUsageMb);
+    notifyReminderDecision(payload.tabId, payload.action, proceed, payload.reason, {
+      memoryUsageMb: payload.memoryUsageMb,
+      totalHeapMb: payload.totalHeapMb,
+      heapLimitMb: payload.heapLimitMb,
+      fullPageMemoryMb: payload.fullPageMemoryMb
+    });
   };
 
   stayButton.addEventListener('click', () => sendDecision(false));

@@ -29,6 +29,7 @@ interface PerformanceMetricsResponse {
 
 function reflectNativeHostStatus(status: NativeHostStatus): void {
   currentNativeHostStatus = status;
+  manager.handleNativeHostStatusChange(status);
   void setNativeHostStatus(status);
   if (status === 'connected') {
     void chrome.alarms.clear(DEBUGGER_PROBE_ALARM);
@@ -80,7 +81,10 @@ function setupCompanionBridge(): void {
 
   const handleMessage = async (message: CompanionInboundMessage) => {
     if (message.type === 'telemetry') {
-      await manager.updateTabMemory(message.tabId, message.memoryUsageMb);
+      await manager.updateTabMemory(message.tabId, {
+        source: 'companion',
+        memoryUsageMb: message.memoryUsageMb
+      });
     } else if (message.type === 'error') {
       console.error('Companion error', message.message);
     }
@@ -158,7 +162,7 @@ async function collectTabMemoryViaDebugger(tabId: number): Promise<void> {
 
     if (usedMetric && typeof usedMetric.value === 'number') {
       const memoryUsageMb = bytesToMb(usedMetric.value);
-      await manager.updateTabMemory(tabId, memoryUsageMb, 'debugger');
+      await manager.updateTabMemory(tabId, { source: 'debugger', memoryUsageMb });
     }
   } catch (error) {
     console.warn('Debugger memory probe failed', { tabId, error });
@@ -391,7 +395,13 @@ chrome.runtime.onMessage.addListener((message: RuntimeMessage, sender, sendRespo
     }
     const senderTabId = sender.tab?.id;
     if (typeof senderTabId === 'number') {
-      void manager.updateTabMemory(senderTabId, message.memoryUsageMb, 'probe');
+      void manager.updateTabMemory(senderTabId, {
+        source: 'probe',
+        memoryUsageMb: message.memoryUsageMb,
+        totalHeapMb: message.totalHeapMb,
+        heapLimitMb: message.heapLimitMb,
+        fullPageMemoryMb: message.fullPageMemoryMb
+      });
     }
     return false;
   }
@@ -424,7 +434,16 @@ chrome.runtime.onMessage.addListener((message: RuntimeMessage, sender, sendRespo
   if (message.type === 'reminder-decision') {
     const reminder = message as ReminderDecisionMessage;
     void manager
-      .handleReminderDecision(reminder.tabId, reminder.action, reminder.proceed, reminder.reason, reminder.memoryUsageMb)
+      .handleReminderDecision(
+        reminder.tabId,
+        reminder.action,
+        reminder.proceed,
+        reminder.reason,
+        reminder.memoryUsageMb,
+        reminder.totalHeapMb,
+        reminder.fullPageMemoryMb,
+        reminder.heapLimitMb
+      )
       .then(() => sendResponse({ success: true }));
     return true;
   }

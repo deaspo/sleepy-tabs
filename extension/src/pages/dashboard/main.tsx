@@ -29,6 +29,8 @@ function describeMemorySource(source?: TabTelemetryRecord['memorySource']): stri
       return 'Chrome debugger sampler';
     case 'probe':
       return 'In-tab JS heap probe';
+    case 'processes':
+      return 'Chrome processes API';
     default:
       return 'Source unknown';
   }
@@ -38,6 +40,28 @@ function formatMemoryDetail(record: TabTelemetryRecord): string {
   const sourceLabel = describeMemorySource(record.memorySource);
   const sampledAt = record.memoryCapturedAt ? `Sampled ${formatClock(record.memoryCapturedAt)}` : null;
   return [sourceLabel, sampledAt].filter(Boolean).join(' • ');
+}
+
+function formatMemoryHeadline(record: TabTelemetryRecord): string {
+  const preferred = typeof record.fullPageMemoryMb === 'number' ? record.fullPageMemoryMb : record.memoryUsageMb;
+  return typeof preferred === 'number' ? `${preferred.toFixed(2)} MB` : 'unknown';
+}
+
+function memoryMetricLines(record: TabTelemetryRecord): string[] {
+  const lines: string[] = [];
+  if (typeof record.memoryUsageMb === 'number') {
+    lines.push(`JS heap: ${record.memoryUsageMb.toFixed(2)} MB`);
+  }
+  if (typeof record.fullPageMemoryMb === 'number') {
+    lines.push(`Full page: ${record.fullPageMemoryMb.toFixed(2)} MB`);
+  }
+  if (typeof record.totalHeapMb === 'number') {
+    const limitSuffix = typeof record.heapLimitMb === 'number' ? ` / ${record.heapLimitMb.toFixed(2)} MB limit` : '';
+    lines.push(`Heap total: ${record.totalHeapMb.toFixed(2)} MB${limitSuffix}`);
+  } else if (typeof record.heapLimitMb === 'number') {
+    lines.push(`Heap limit: ${record.heapLimitMb.toFixed(2)} MB`);
+  }
+  return lines;
 }
 
 function canBringTabToFront(record: TabTelemetryRecord, state?: TabState): boolean {
@@ -237,9 +261,14 @@ function DashboardApp(): JSX.Element {
                 <h3 style={{ margin: '0 0 8px 0', fontSize: 16 }}>{record.title}</h3>
                 <p style={{ margin: '0 0 4px 0', wordBreak: 'break-word' }}>{record.url}</p>
                 <p style={{ margin: 0, fontSize: 13 }}>
-                  Used {record.memoryUsageMb?.toFixed(2) ?? 'unknown'} MB at {formatTime(record.timestamp)}
+                  Peak memory {formatMemoryHeadline(record)} at {formatTime(record.timestamp)}
                 </p>
-                <p style={{ margin: '4px 0 0 0', fontSize: 12, color: '#5f6368' }}>{formatMemoryDetail(record)}</p>
+                <div style={{ margin: '4px 0 0 0', fontSize: 12, color: '#5f6368' }}>
+                  {memoryMetricLines(record).map((line, index) => (
+                    <div key={`${record.id ?? record.tabId}-critical-${index}`}>{line}</div>
+                  ))}
+                  {formatMemoryDetail(record) && <div>{formatMemoryDetail(record)}</div>}
+                </div>
               </li>
             ))}
           </ul>
@@ -255,7 +284,7 @@ function DashboardApp(): JSX.Element {
                 <th style={{ padding: '8px 12px' }}>Time</th>
                 <th style={{ padding: '8px 12px' }}>Action</th>
                 <th style={{ padding: '8px 12px' }}>Reason</th>
-                {/* <th style={{ padding: '8px 12px' }}>Memory (MB)</th> */}
+                <th style={{ padding: '8px 12px' }}>Memory</th>
                 <th style={{ padding: '8px 12px' }}>Title</th>
                 <th style={{ padding: '8px 12px' }}>Bring to front</th>
               </tr>
@@ -269,10 +298,16 @@ function DashboardApp(): JSX.Element {
                   <td style={{ padding: '8px 12px', whiteSpace: 'nowrap' }}>{formatTime(record.timestamp)}</td>
                   <td style={{ padding: '8px 12px', textTransform: 'capitalize' }}>{record.action}</td>
                   <td style={{ padding: '8px 12px', textTransform: 'capitalize' }}>{record.reason}</td>
-                  {/* <td style={{ padding: '8px 12px' }}>
-                    <div>{record.memoryUsageMb?.toFixed(2) ?? '—'}</div>
-                    <div style={{ fontSize: 11, color: '#5f6368' }}>{formatMemoryDetail(record)}</div>
-                  </td> */}
+                  <td style={{ padding: '8px 12px' }}>
+                    {memoryMetricLines(record).map((line, index) => (
+                      <div key={`${record.id ?? record.tabId}-recent-${index}`}>{line}</div>
+                    ))}
+                    {formatMemoryDetail(record) && (
+                      <div style={{ fontSize: 11, color: '#5f6368', marginTop: 4 }}>
+                        {formatMemoryDetail(record)}
+                      </div>
+                    )}
+                  </td>
                   <td style={{ padding: '8px 12px' }}>{record.title ?? 'Untitled'}</td>
                   <td style={{ padding: '8px 12px' }}>
                     {canBringTabToFront(record, tabStates[record.tabId]) ? (

@@ -7,6 +7,10 @@ export interface SleepSettings {
   enableAutoReload: boolean;
   enableAutoSleep: boolean;
   reminderTimeoutSeconds: number;
+  autoFocusOnReminder: boolean;
+  enableFullPageSampling: boolean;
+  enableProcessFallback: boolean;
+  processFallbackThresholdMb: number;
 }
 
 export interface ConsentState {
@@ -14,7 +18,7 @@ export interface ConsentState {
   acceptedAt?: number;
 }
 
-export type TabMemorySource = 'companion' | 'probe' | 'debugger';
+export type TabMemorySource = 'companion' | 'probe' | 'debugger' | 'processes';
 
 export interface TabState {
   tabId: number;
@@ -26,8 +30,14 @@ export interface TabState {
   ignored: boolean;
   pendingReminder?: SleepAction;
   memoryUsageMb?: number;
+  totalHeapMb?: number;
+  heapLimitMb?: number;
+  fullPageMemoryMb?: number;
   memorySource?: TabMemorySource;
   memoryCapturedAt?: number;
+  processId?: number;
+  processSampledAt?: number;
+  processFallbackThresholdMb?: number;
 }
 
 export type NativeHostStatus = 'unknown' | 'connecting' | 'connected' | 'disconnected';
@@ -39,8 +49,12 @@ export interface TabTelemetryRecord {
   title?: string;
   action: SleepAction;
   memoryUsageMb?: number;
+  totalHeapMb?: number;
+  heapLimitMb?: number;
+  fullPageMemoryMb?: number;
   memorySource?: TabMemorySource;
   memoryCapturedAt?: number;
+  processFallbackThresholdMb?: number;
   reason: 'inactivity' | 'memory' | 'manual' | 'timeout';
   timestamp: number;
   critical: boolean;
@@ -134,6 +148,9 @@ export interface ReminderDecisionMessage {
   proceed: boolean;
   reason: TabTelemetryRecord['reason'];
   memoryUsageMb?: number;
+  totalHeapMb?: number;
+  fullPageMemoryMb?: number;
+  heapLimitMb?: number;
 }
 
 export interface ManualActionMessage {
@@ -153,7 +170,17 @@ export interface TabMemoryProbeMessage {
   memoryUsageMb: number;
   totalHeapMb?: number;
   heapLimitMb?: number;
+  fullPageMemoryMb?: number;
   source: TabMemorySource;
+}
+
+export interface TabMemorySample {
+  memoryUsageMb?: number;
+  totalHeapMb?: number;
+  heapLimitMb?: number;
+  fullPageMemoryMb?: number;
+  source: TabMemorySource;
+  processId?: number;
 }
 
 export interface TabStateUpdatedMessage {

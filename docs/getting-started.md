@@ -98,11 +98,25 @@ Keep this terminal open; it maintains the CDP connection and streams telemetry b
 - Check the companion terminal for telemetry output and ensure no unhandled errors appear.
 - Toggle the companion off to confirm the popup still reports memory usage via the hybrid fallback (you may briefly see Chrome's debugger infobar while it samples tabs).
 
+### Optional: Enable Full-Page Sampling
+
+Some teams want a richer memory snapshot sourced from `measureUserAgentSpecificMemory`. You can opt-in per profile:
+
+1. Open the extension popup and click **Open settings** (or browse to `chrome-extension://<id>/src/pages/options/index.html`).
+2. Enable **Full-page memory sampling**.
+3. Ensure the target tabs run with both [Cross-Origin Opener Policy](https://developer.mozilla.org/docs/Web/HTTP/Headers/Cross-Origin-Opener-Policy) and [Cross-Origin Embedder Policy](https://developer.mozilla.org/docs/Web/HTTP/Headers/Cross-Origin-Embedder-Policy) headers so the API is allowed.
+4. Reload the tabs you care about; the popup/reminder UI will now show full-page totals when available.
+
+### Optional: Control Reminder Focus Behavior
+
+Reminders normally bring the impacted tab to the foreground so you can immediately decide whether to pause or reload it. If you prefer to stay on your current tab (for example, while presenting or taking notes), open the **Settings** page and toggle **Switch to the tab when showing reminders**. The setting is on by default to match the legacy behavior, but you can disable it at any time without reloading the extension.
+
 ## 9. Telemetry Sources at a Glance
 
 1. **Native companion (recommended):** Provides full CDP coverage, lifecycle control, and most accurate metrics.
 2. **Chrome debugger fallback:** When the companion is offline, the background service worker sporadically attaches via `chrome.debugger` to gather `Performance.getMetrics` samples. Chrome displays an infobar during each quick attach/detach cycle.
 3. **In-tab probes:** A lightweight content script calls `performance.memory` inside each tab when available, providing approximate JS heap usage without any special permissions.
+4. **Chrome processes fallback:** If enabled in Settings, Sleepy Tabs polls the `chrome.processes` API when all other sources are unavailable. These readings match Chrome's Task Manager and are only recorded after exceeding the **Process fallback threshold (MB)** slider on the Settings page. Each telemetry record notes which threshold fired so you can trace aggressive policies later.
 
 ## 10. Optional Quality Checks
 

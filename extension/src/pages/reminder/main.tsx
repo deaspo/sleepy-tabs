@@ -35,14 +35,33 @@ function ReminderApp(): JSX.Element {
   const memoryUsageMb = params.get('memoryUsageMb')
     ? Number(params.get('memoryUsageMb'))
     : undefined;
+  const totalHeapMb = params.get('totalHeapMb') ? Number(params.get('totalHeapMb')) : undefined;
+  const fullPageMemoryMb = params.get('fullPageMemoryMb')
+    ? Number(params.get('fullPageMemoryMb'))
+    : undefined;
+  const heapLimitMb = params.get('heapLimitMb') ? Number(params.get('heapLimitMb')) : undefined;
+  const memoryCapturedAt = params.get('memoryCapturedAt')
+    ? Number(params.get('memoryCapturedAt'))
+    : undefined;
+  const memorySource = params.get('memorySource') ?? undefined;
 
   const remaining = useCountdown(timeoutSeconds, () => {
-    notifyReminderDecision(tabId, action, true, reason, memoryUsageMb);
+    notifyReminderDecision(tabId, action, true, reason, {
+      memoryUsageMb,
+      totalHeapMb,
+      fullPageMemoryMb,
+      heapLimitMb
+    });
     window.close();
   });
 
   const handleDecision = (proceed: boolean) => {
-    notifyReminderDecision(tabId, action, proceed, reason, memoryUsageMb);
+    notifyReminderDecision(tabId, action, proceed, reason, {
+      memoryUsageMb,
+      totalHeapMb,
+      fullPageMemoryMb,
+      heapLimitMb
+    });
     window.close();
   };
 
@@ -61,11 +80,33 @@ function ReminderApp(): JSX.Element {
       <h1 style={{ marginTop: 0 }}>
         {action === 'sleep' ? 'Pause inactive tab?' : 'Reload heavy tab?'}
       </h1>
-      <p>
-        {reason === 'memory'
-          ? `This tab is using ${memoryUsageMb ?? 'unknown'} MB of memory.`
-          : 'This tab has been inactive for a while.'}
-      </p>
+      {reason === 'memory' ? (
+        <div style={{ fontSize: 14, color: '#202124', marginBottom: 12 }}>
+          <p style={{ margin: '0 0 4px 0' }}>Latest memory snapshot:</p>
+          <ul style={{ listStyle: 'none', padding: 0, margin: 0 }}>
+            <li>JS heap: {memoryUsageMb?.toFixed(2) ?? 'unknown'} MB</li>
+            {typeof totalHeapMb === 'number' && (
+              <li>
+                Heap total: {totalHeapMb.toFixed(2)} MB
+                {typeof heapLimitMb === 'number' ? ` / ${heapLimitMb.toFixed(2)} MB limit` : ''}
+              </li>
+            )}
+            {typeof fullPageMemoryMb === 'number' && (
+              <li>Full page: {fullPageMemoryMb.toFixed(2)} MB</li>
+            )}
+            {typeof totalHeapMb !== 'number' && typeof heapLimitMb === 'number' && (
+              <li>Heap limit: {heapLimitMb.toFixed(2)} MB</li>
+            )}
+          </ul>
+          <div style={{ color: '#5f6368', marginTop: 6, fontSize: 12 }}>
+            {memoryCapturedAt
+              ? `Sampled ${new Date(memoryCapturedAt).toLocaleTimeString()} (${memorySource ?? 'unknown source'})`
+              : 'Awaiting fresh sample…'}
+          </div>
+        </div>
+      ) : (
+        <p>This tab has been inactive for a while.</p>
+      )}
       <p>We will proceed automatically in {remaining} seconds.</p>
       <div style={{ display: 'flex', justifyContent: 'center', gap: 12 }}>
         <button

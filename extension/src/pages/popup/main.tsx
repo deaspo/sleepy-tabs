@@ -8,6 +8,9 @@ interface PopupState {
   title: string;
   url: string;
   memoryUsageMb?: number;
+  totalHeapMb?: number;
+  heapLimitMb?: number;
+  fullPageMemoryMb?: number;
   memorySource?: TabMemorySource;
   memoryCapturedAt?: number;
   ignored: boolean;
@@ -34,6 +37,9 @@ function PopupApp(): JSX.Element {
             title: active.title ?? 'Untitled tab',
             url: active.url ?? 'Unknown URL',
             memoryUsageMb: tabState?.memoryUsageMb,
+            totalHeapMb: tabState?.totalHeapMb,
+            heapLimitMb: tabState?.heapLimitMb,
+            fullPageMemoryMb: tabState?.fullPageMemoryMb,
             memorySource: tabState?.memorySource,
             memoryCapturedAt: tabState?.memoryCapturedAt,
             ignored: tabState?.ignored ?? false
@@ -58,6 +64,9 @@ function PopupApp(): JSX.Element {
           ...prev,
           ignored: message.state.ignored,
           memoryUsageMb: message.state.memoryUsageMb,
+          totalHeapMb: message.state.totalHeapMb,
+          heapLimitMb: message.state.heapLimitMb,
+          fullPageMemoryMb: message.state.fullPageMemoryMb,
           memorySource: message.state.memorySource,
           memoryCapturedAt: message.state.memoryCapturedAt
         };
@@ -100,6 +109,9 @@ function PopupApp(): JSX.Element {
               ...prev,
               ignored: updated.ignored,
               memoryUsageMb: updated.memoryUsageMb,
+              totalHeapMb: updated.totalHeapMb,
+              heapLimitMb: updated.heapLimitMb,
+              fullPageMemoryMb: updated.fullPageMemoryMb,
               memorySource: updated.memorySource,
               memoryCapturedAt: updated.memoryCapturedAt
             }
@@ -189,6 +201,59 @@ function PopupApp(): JSX.Element {
     <div style={{ width: 320, padding: 16, fontFamily: 'system-ui, sans-serif' }}>
       <h1 style={{ fontSize: 18, margin: '0 0 8px 0' }}>Sleepy Tabs</h1>
       <p style={{ margin: '0 0 8px 0', fontSize: 14 }}>{state.title}</p>
+      <div
+        style={{
+          fontSize: 12,
+          background: '#f1f3f4',
+          borderRadius: 8,
+          padding: '8px 10px',
+          marginBottom: 12,
+          lineHeight: 1.4
+        }}
+      >
+        <strong style={{ display: 'block', marginBottom: 4 }}>
+          Latest memory sample
+          {state.memorySource && (
+            <span
+              style={{
+                marginLeft: 6,
+                padding: '2px 6px',
+                borderRadius: 999,
+                background: '#e8eaed',
+                fontSize: 10,
+                textTransform: 'uppercase',
+                letterSpacing: 0.5,
+                color: '#5f6368'
+              }}
+            >
+              {state.memorySource}
+            </span>
+          )}
+        </strong>
+        <div>{state.memoryUsageMb ? `JS heap: ${state.memoryUsageMb.toFixed(2)} MB` : 'JS heap: unknown'}</div>
+        {typeof state.fullPageMemoryMb === 'number' && (
+          <div>Full page: {state.fullPageMemoryMb.toFixed(2)} MB</div>
+        )}
+        {typeof state.totalHeapMb === 'number' && (
+          <div>
+            Heap total: {state.totalHeapMb.toFixed(2)} MB
+            {typeof state.heapLimitMb === 'number' ? ` / ${state.heapLimitMb.toFixed(2)} MB limit` : ''}
+          </div>
+        )}
+        {!state.totalHeapMb && typeof state.heapLimitMb === 'number' && (
+          <div>Heap limit: {state.heapLimitMb.toFixed(2)} MB</div>
+        )}
+        <div style={{ marginTop: 4, color: '#5f6368' }}>
+          {state.memoryCapturedAt
+            ? `Sampled ${new Date(state.memoryCapturedAt).toLocaleTimeString()} (${state.memorySource ?? 'unknown source'})`
+            : 'Awaiting fresh sample…'}
+        </div>
+        {state.memorySource === 'processes' && (
+          <div style={{ marginTop: 4, color: '#5f6368' }}>
+            Using Chrome processes fallback (Task Manager values)
+          </div>
+        )}
+      </div>
       {/* <p style={{ margin: '0 0 12px 0', fontSize: 12, color: '#555', wordBreak: 'break-word' }}>
         {state.url}
       </p> */}
