@@ -278,7 +278,7 @@ export class SleepManager {
     await this.executeAction(tabId, action, reason, undefined, false);
   }
 
-  async sleepAllTabs(excludeActive = true): Promise<SleepAllResult> {
+  async sleepAllTabs(excludeActive = true, excludeTabId?: number): Promise<SleepAllResult> {
     const [tabs, state] = await Promise.all([
       chrome.tabs.query({ discarded: false }),
       getTabState()
@@ -300,7 +300,7 @@ export class SleepManager {
       if (typeof tab.id !== 'number') {
         continue;
       }
-      if (excludeActive && activeTabId === tab.id) {
+      if ((excludeActive && activeTabId === tab.id) || (typeof excludeTabId === 'number' && tab.id === excludeTabId)) {
         continue;
       }
 

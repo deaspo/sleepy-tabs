@@ -1,13 +1,7 @@
 import { useEffect, useState, type ChangeEvent } from 'react';
 import ReactDOM from 'react-dom/client';
 
-import type {
-  NativeHostStatus,
-  RuntimeMessage,
-  SleepAction,
-  TabMemorySource,
-  TabState
-} from '../../shared/types';
+import type { RuntimeMessage, SleepAction, TabMemorySource, TabState } from '../../shared/types';
 
 interface PopupState {
   tabId: number;
@@ -22,7 +16,6 @@ interface PopupState {
 function PopupApp(): JSX.Element {
   const [state, setState] = useState<PopupState | null>(null);
   const [status, setStatus] = useState<string>('');
-  const [hostStatus, setHostStatus] = useState<NativeHostStatus>('unknown');
   const [excludeCurrentTab, setExcludeCurrentTab] = useState<boolean>(true);
   const currentTabId = state?.tabId ?? null;
 
@@ -74,30 +67,6 @@ function PopupApp(): JSX.Element {
     chrome.runtime.onMessage.addListener(handleMessage);
     return () => {
       chrome.runtime.onMessage.removeListener(handleMessage);
-    };
-  }, []);
-
-  useEffect(() => {
-    chrome.storage.local.get('sleepyTabs.nativeHostStatus', (result) => {
-      setHostStatus((result['sleepyTabs.nativeHostStatus'] as NativeHostStatus | undefined) ?? 'unknown');
-    });
-
-    const handleStorageChange = (
-      changes: Record<string, chrome.storage.StorageChange>,
-      areaName: 'sync' | 'local' | 'managed' | 'session'
-    ): void => {
-      if (areaName !== 'local') {
-        return;
-      }
-      const statusChange = changes['sleepyTabs.nativeHostStatus'];
-      if (statusChange) {
-        setHostStatus((statusChange.newValue as NativeHostStatus | undefined) ?? 'unknown');
-      }
-    };
-
-    chrome.storage.onChanged.addListener(handleStorageChange);
-    return () => {
-      chrome.storage.onChanged.removeListener(handleStorageChange);
     };
   }, []);
 
@@ -170,6 +139,9 @@ function PopupApp(): JSX.Element {
   };
 
   const handleSleepAll = () => {
+    if (!state) {
+      return;
+    }
     type SleepAllResponse = {
       success: boolean;
       attempted?: number;
@@ -178,7 +150,12 @@ function PopupApp(): JSX.Element {
       error?: string;
     };
 
-    chrome.runtime.sendMessage({ type: 'sleep-all-tabs', excludeActive: excludeCurrentTab }, (response: SleepAllResponse) => {
+    const payload = {
+      type: 'sleep-all-tabs' as const,
+      excludeActive: excludeCurrentTab,
+      excludeTabId: excludeCurrentTab ? state.tabId : undefined
+    };
+    chrome.runtime.sendMessage(payload, (response: SleepAllResponse) => {
       let messageText = '';
 
       if (chrome.runtime.lastError) {
@@ -208,56 +185,12 @@ function PopupApp(): JSX.Element {
     return <div style={{ padding: 16 }}>Loading...</div>;
   }
 
-  const memoryUsageText = (() => {
-    if (typeof state.memoryUsageMb === 'number') {
-      return `${state.memoryUsageMb.toFixed(2)} MB`;
-    }
-    if (hostStatus !== 'connected') {
-      return 'Native companion offline';
-    }
-    return 'collecting...';
-  })();
-
-  const memorySourceText = (() => {
-    if (state.memorySource === 'companion') {
-      return 'Source: Native companion (full fidelity)';
-    }
-    if (state.memorySource === 'debugger') {
-      return 'Source: Chrome debugger sampler (JS heap only)';
-    }
-    if (state.memorySource === 'probe') {
-      return 'Source: In-tab JS heap probe (approximate)';
-    }
-    if (hostStatus === 'connecting') {
-      return 'Source: waiting for native companion...';
-    }
-    if (hostStatus === 'connected') {
-      return 'Source: awaiting first sample';
-    }
-    return 'Source: fallback samplers unavailable';
-  })();
-
-  const memoryCapturedHint = (() => {
-    if (typeof state.memoryCapturedAt !== 'number') {
-      return '';
-    }
-    const captured = new Date(state.memoryCapturedAt);
-    return ` • Captured ${captured.toLocaleTimeString()}`;
-  })();
-
   return (
     <div style={{ width: 320, padding: 16, fontFamily: 'system-ui, sans-serif' }}>
       <h1 style={{ fontSize: 18, margin: '0 0 8px 0' }}>Sleepy Tabs</h1>
       <p style={{ margin: '0 0 8px 0', fontSize: 14 }}>{state.title}</p>
       {/* <p style={{ margin: '0 0 12px 0', fontSize: 12, color: '#555', wordBreak: 'break-word' }}>
         {state.url}
-      </p> */}
-      {/* <p style={{ margin: '0 0 16px 0', fontSize: 13 }}>
-        Estimated memory usage: {memoryUsageText}
-      </p>
-      <p style={{ margin: '-8px 0 16px 0', fontSize: 11, color: '#5f6368' }}>
-        {memorySourceText}
-        {memoryCapturedHint}
       </p> */}
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>

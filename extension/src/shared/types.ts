@@ -145,6 +145,7 @@ export interface TabStateUpdatedMessage {
 export interface SleepAllTabsMessage {
   type: 'sleep-all-tabs';
   excludeActive?: boolean;
+  excludeTabId?: number;
 }
 
 export interface NativeHostStatusMessage {

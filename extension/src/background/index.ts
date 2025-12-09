@@ -326,7 +326,7 @@ chrome.runtime.onMessage.addListener((message: RuntimeMessage, sender, sendRespo
   if (message.type === 'sleep-all-tabs') {
     const excludeActive = message.excludeActive !== false;
     void manager
-      .sleepAllTabs(excludeActive)
+      .sleepAllTabs(excludeActive, message.excludeTabId)
       .then((result) => sendResponse({ success: true, ...result }))
       .catch((error) => {
         console.error('Failed to process sleep-all-tabs request', error);
