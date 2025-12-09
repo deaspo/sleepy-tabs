@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import ReactDOM from 'react-dom/client';
 
 import { requestTelemetry } from '../../shared/messaging';
@@ -38,6 +38,12 @@ function DashboardApp(): JSX.Element {
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string>('');
   const [migrationToast, setMigrationToast] = useState<string>('');
+  const [jumpingTabId, setJumpingTabId] = useState<number | null>(null);
+  const migrationToastRef = useRef('');
+
+  useEffect(() => {
+    migrationToastRef.current = migrationToast;
+  }, [migrationToast]);
 
   useEffect(() => {
     requestTelemetry(200)
@@ -57,7 +63,7 @@ function DashboardApp(): JSX.Element {
         setRecords((prev) => {
           const merged = [...payload.payload, ...prev].slice(0, 200);
           const stillMissingSources = merged.some((record) => record.memorySource === undefined);
-          if (!stillMissingSources && migrationToast) {
+          if (!stillMissingSources && migrationToastRef.current) {
             setMigrationToast('Telemetry upgrade complete — all entries now show source info.');
             window.setTimeout(() => setMigrationToast(''), 4000);
           }
@@ -78,9 +84,25 @@ function DashboardApp(): JSX.Element {
     [records]
   );
 
+  const handleJumpToTab = (tabId: number): void => {
+    if (typeof tabId !== 'number') {
+      return;
+    }
+    setJumpingTabId(tabId);
+    chrome.runtime.sendMessage({ type: 'activate-tab', tabId }, () => {
+      const error = chrome.runtime.lastError;
+      if (error) {
+        console.error('Failed to jump to tab', error.message);
+        setJumpingTabId(null);
+        return;
+      }
+      window.close();
+    });
+  };
+
   return (
     <div
-      style={{ fontFamily: 'system-ui, sans-serif', padding: '24px', maxWidth: 960, minWidth: 480, margin: '0 auto' }}
+      style={{ fontFamily: 'system-ui, sans-serif', padding: '24px', maxWidth: 960, minWidth: 320, margin: '0 auto' }}
     >
       <header style={{ marginBottom: 24 }}>
         <h1 style={{ margin: 0 }}>Sleepy Tabs Dashboard</h1>
@@ -145,6 +167,7 @@ function DashboardApp(): JSX.Element {
                 <th style={{ padding: '8px 12px' }}>Reason</th>
                 {/* <th style={{ padding: '8px 12px' }}>Memory (MB)</th> */}
                 <th style={{ padding: '8px 12px' }}>Title</th>
+                <th style={{ padding: '8px 12px' }}>Jump to tab</th>
               </tr>
             </thead>
             <tbody>
@@ -161,6 +184,23 @@ function DashboardApp(): JSX.Element {
                     <div style={{ fontSize: 11, color: '#5f6368' }}>{formatMemoryDetail(record)}</div>
                   </td> */}
                   <td style={{ padding: '8px 12px' }}>{record.title ?? 'Untitled'}</td>
+                  <td style={{ padding: '8px 12px' }}>
+                    <button
+                      type="button"
+                      onClick={() => handleJumpToTab(record.tabId)}
+                      disabled={typeof record.tabId !== 'number' || jumpingTabId === record.tabId}
+                      style={{
+                        padding: '6px 10px',
+                        borderRadius: 4,
+                        border: '1px solid #1a73e8',
+                        background: jumpingTabId === record.tabId ? '#e8f0fe' : '#fff',
+                        color: '#1a73e8',
+                        cursor: jumpingTabId === record.tabId ? 'wait' : 'pointer'
+                      }}
+                    >
+                      {jumpingTabId === record.tabId ? 'Switching…' : 'Jump to tab'}
+                    </button>
+                  </td>
                 </tr>
               ))}
             </tbody>

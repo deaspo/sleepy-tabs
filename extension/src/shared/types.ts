@@ -128,6 +128,11 @@ export interface ToggleIgnoreMessage {
   ignored: boolean;
 }
 
+export interface ActivateTabMessage {
+  type: 'activate-tab';
+  tabId: number;
+}
+
 export interface TabMemoryProbeMessage {
   type: 'tab-memory-probe';
   memoryUsageMb: number;
@@ -163,6 +168,7 @@ export type RuntimeMessage =
   | ReminderDecisionMessage
   | ManualActionMessage
   | ToggleIgnoreMessage
+  | ActivateTabMessage
   | TabStateUpdatedMessage
   | SleepAllTabsMessage
   | NativeHostStatusMessage

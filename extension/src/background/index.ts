@@ -4,6 +4,7 @@ import { getRecentTelemetry } from '../shared/telemetryDb';
 import { getConsentState, getSettings, getTabState, setNativeHostStatus } from '../shared/storage';
 import type {
   CompanionInboundMessage,
+  ActivateTabMessage,
   ManualActionMessage,
   NativeHostStatus,
   ReminderDecisionMessage,
@@ -223,6 +224,53 @@ function bytesToMb(bytes: number): number {
   return Math.round((bytes / 1048576) * 100) / 100;
 }
 
+async function activateTabAndFocusWindow(tabId: number): Promise<void> {
+  const tab = await getTab(tabId);
+  await activateTab(tabId);
+  if (typeof tab.windowId === 'number') {
+    await focusWindow(tab.windowId);
+  }
+}
+
+function getTab(tabId: number): Promise<chrome.tabs.Tab> {
+  return new Promise((resolve, reject) => {
+    chrome.tabs.get(tabId, (tab) => {
+      const error = chrome.runtime.lastError;
+      if (error) {
+        reject(new Error(error.message));
+        return;
+      }
+      resolve(tab);
+    });
+  });
+}
+
+function activateTab(tabId: number): Promise<chrome.tabs.Tab> {
+  return new Promise((resolve, reject) => {
+    chrome.tabs.update(tabId, { active: true }, (tab) => {
+      const error = chrome.runtime.lastError;
+      if (error || !tab) {
+        reject(new Error(error?.message ?? 'Failed to activate tab'));
+        return;
+      }
+      resolve(tab);
+    });
+  });
+}
+
+function focusWindow(windowId: number): Promise<void> {
+  return new Promise((resolve, reject) => {
+    chrome.windows.update(windowId, { focused: true }, () => {
+      const error = chrome.runtime.lastError;
+      if (error) {
+        reject(new Error(error.message));
+        return;
+      }
+      resolve();
+    });
+  });
+}
+
 void bootstrap();
 
 chrome.runtime.onInstalled.addListener(async () => {
@@ -321,6 +369,18 @@ chrome.runtime.onMessage.addListener((message: RuntimeMessage, sender, sendRespo
       void manager.updateTabMemory(senderTabId, message.memoryUsageMb, 'probe');
     }
     return false;
+  }
+
+  if (message.type === 'activate-tab') {
+    const activateMessage = message as ActivateTabMessage;
+    void activateTabAndFocusWindow(activateMessage.tabId)
+      .then(() => sendResponse({ success: true }))
+      .catch((error: unknown) => {
+        console.error('Failed to activate tab', error);
+        const messageText = error instanceof Error ? error.message : String(error);
+        sendResponse({ success: false, error: messageText });
+      });
+    return true;
   }
 
   if (message.type === 'sleep-all-tabs') {
