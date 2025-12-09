@@ -4,6 +4,7 @@ import { getRecentTelemetry } from '../shared/telemetryDb';
 import { getConsentState, getSettings, getTabState, setNativeHostStatus } from '../shared/storage';
 import type {
   CompanionInboundMessage,
+  FocusTabMessage,
   ManualActionMessage,
   NativeHostStatus,
   ReminderDecisionMessage,
@@ -225,6 +226,48 @@ function bytesToMb(bytes: number): number {
   return Math.round((bytes / 1048576) * 100) / 100;
 }
 
+async function bringTabToFront(message: FocusTabMessage): Promise<void> {
+  const { tabId, expectedUrl, windowId } = message;
+  const liveTab = await chrome.tabs.get(tabId).catch(() => null);
+
+  if (liveTab && tabMatchesExpected(liveTab, expectedUrl)) {
+    await activateTab(liveTab.id!, windowId ?? liveTab.windowId);
+    return;
+  }
+
+  if (expectedUrl) {
+    const fallback = await findTabByUrl(expectedUrl);
+    if (fallback && typeof fallback.id === 'number') {
+      await activateTab(fallback.id, fallback.windowId);
+      return;
+    }
+  }
+
+  throw new Error('No matching tab is currently open. It may have been closed or navigated.');
+}
+
+async function activateTab(tabId: number, targetWindowId?: number): Promise<void> {
+  await chrome.tabs.update(tabId, { active: true });
+  if (typeof targetWindowId === 'number') {
+    await chrome.windows.update(targetWindowId, { focused: true });
+  }
+}
+
+async function findTabByUrl(expectedUrl: string): Promise<chrome.tabs.Tab | null> {
+  const tabs = await chrome.tabs.query({});
+  return tabs.find((tab) => tab.url === expectedUrl && typeof tab.id === 'number') ?? null;
+}
+
+function tabMatchesExpected(tab: chrome.tabs.Tab, expectedUrl?: string): boolean {
+  if (typeof tab.id !== 'number') {
+    return false;
+  }
+  if (!expectedUrl) {
+    return true;
+  }
+  return tab.url === expectedUrl;
+}
+
 async function ensureConsentPrompt(): Promise<void> {
   if (consentPromptPromise) {
     return consentPromptPromise;
@@ -277,18 +320,16 @@ chrome.tabs.onActivated.addListener((activeInfo) => {
   void manager.recordTabActivity(activeInfo.tabId);
 });
 
+chrome.tabs.onCreated.addListener((tab) => {
+  void manager.syncTabMetadata(tab);
+});
+
 chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
   if (changeInfo.status === 'complete') {
     void manager.recordTabActivity(tabId);
   }
-  if (changeInfo.url) {
-    chrome.storage.local.get('sleepyTabs.tabState').then((data) => {
-      const state = data['sleepyTabs.tabState'] ?? {};
-      if (state[tabId]) {
-        state[tabId].lastActiveAt = Date.now();
-        chrome.storage.local.set({ 'sleepyTabs.tabState': state });
-      }
-    });
+  if (changeInfo.url || changeInfo.title) {
+    void manager.syncTabMetadata(tab);
   }
   if (typeof tab.id === 'number') {
     ensureNativePort();
@@ -322,6 +363,11 @@ chrome.runtime.onMessage.addListener((message: RuntimeMessage, sender, sendRespo
     return true;
   }
 
+  if (message.type === 'request-tab-states') {
+    void getTabState().then((state) => sendResponse(state));
+    return true;
+  }
+
   if (message.type === 'consent-updated') {
     void manager.updateConsent(message.payload).then(() => sendResponse({ success: true }));
     return true;
@@ -348,6 +394,18 @@ chrome.runtime.onMessage.addListener((message: RuntimeMessage, sender, sendRespo
       void manager.updateTabMemory(senderTabId, message.memoryUsageMb, 'probe');
     }
     return false;
+  }
+
+  if (message.type === 'focus-tab') {
+    const focusMessage = message as FocusTabMessage;
+    void bringTabToFront(focusMessage)
+      .then(() => sendResponse({ success: true }))
+      .catch((error) => {
+        console.warn('Failed to bring tab to front', error);
+        const messageText = error instanceof Error ? error.message : String(error);
+        sendResponse({ success: false, error: messageText });
+      });
+    return true;
   }
 
   if (message.type === 'sleep-all-tabs') {

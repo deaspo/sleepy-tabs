@@ -1,7 +1,9 @@
 import type {
   CompanionOutboundMessage,
+  FocusTabResponse,
   RuntimeMessage,
   SleepAction,
+  TabState,
   TabTelemetryRecord
 } from './types';
 
@@ -21,6 +23,45 @@ export function requestTelemetry(limit = 100): Promise<TabTelemetryRecord[]> {
       }
       resolve(response as TabTelemetryRecord[]);
     });
+  });
+}
+
+export function requestTabStates(): Promise<Record<number, TabState>> {
+  return new Promise((resolve, reject) => {
+    chrome.runtime.sendMessage({ type: 'request-tab-states' }, (response) => {
+      if (chrome.runtime.lastError) {
+        reject(chrome.runtime.lastError);
+        return;
+      }
+      resolve((response as Record<number, TabState>) ?? {});
+    });
+  });
+}
+
+export function focusTab(
+  tabId: number,
+  options: { expectedUrl?: string; windowId?: number } = {}
+): Promise<void> {
+  return new Promise((resolve, reject) => {
+    chrome.runtime.sendMessage(
+      {
+        type: 'focus-tab',
+        tabId,
+        expectedUrl: options.expectedUrl,
+        windowId: options.windowId
+      },
+      (response: FocusTabResponse) => {
+        if (chrome.runtime.lastError) {
+          reject(chrome.runtime.lastError);
+          return;
+        }
+        if (!response || !response.success) {
+          reject(new Error(response?.error ?? 'Unable to focus tab.'));
+          return;
+        }
+        resolve();
+      }
+    );
   });
 }
 

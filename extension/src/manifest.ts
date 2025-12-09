@@ -24,6 +24,7 @@ const manifest = defineManifest({
     'tabs',
     'scripting',
     'notifications',
+    'windows',
     'sidePanel',
     'nativeMessaging',
     'debugger'

@@ -18,7 +18,11 @@ export type TabMemorySource = 'companion' | 'probe' | 'debugger';
 
 export interface TabState {
   tabId: number;
+  windowId?: number;
+  url?: string;
+  title?: string;
   lastActiveAt: number;
+  lastSeenAt: number;
   ignored: boolean;
   pendingReminder?: SleepAction;
   memoryUsageMb?: number;
@@ -88,6 +92,22 @@ export interface SettingsRequestMessage {
 export interface TabStateRequestMessage {
   type: 'request-tab-state';
   tabId: number;
+}
+
+export interface TabStatesRequestMessage {
+  type: 'request-tab-states';
+}
+
+export interface FocusTabMessage {
+  type: 'focus-tab';
+  tabId: number;
+  expectedUrl?: string;
+  windowId?: number;
+}
+
+export interface FocusTabResponse {
+  success: boolean;
+  error?: string;
 }
 
 export interface ConsentMessage {
@@ -160,6 +180,8 @@ export type RuntimeMessage =
   | TelemetryResponseMessage
   | ConsentMessage
   | TabStateRequestMessage
+  | TabStatesRequestMessage
+  | FocusTabMessage
   | ReminderDecisionMessage
   | ManualActionMessage
   | ToggleIgnoreMessage

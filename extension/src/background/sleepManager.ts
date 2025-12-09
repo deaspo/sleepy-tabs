@@ -16,6 +16,7 @@ import type {
   SleepAction,
   SleepSettings,
   TabMemorySource,
+  TabState,
   TabTelemetryRecord
 } from '../shared/types';
 
@@ -64,49 +65,43 @@ export class SleepManager {
       }
       const existing = state[tab.id];
       const lastActiveAt = existing?.lastActiveAt ?? now;
-      state[tab.id] = {
-        tabId: tab.id,
+      state[tab.id] = this.composeTabState(tab.id, now, existing, {
         lastActiveAt,
-        ignored: existing?.ignored ?? false,
-        memoryUsageMb: existing?.memoryUsageMb,
-        memorySource: existing?.memorySource,
-        memoryCapturedAt: existing?.memoryCapturedAt
-      };
+        lastSeenAt: now,
+        url: tab.url ?? existing?.url,
+        title: tab.title ?? existing?.title,
+        windowId: tab.windowId ?? existing?.windowId
+      });
       postToCompanion({ type: 'track-tab', tabId: tab.id, url: tab.url ?? undefined });
     }
     await setTabState(state);
   }
 
   async recordTabActivity(tabId: number): Promise<void> {
-    const state = await getTabState();
+    const [state, tab] = await Promise.all([
+      getTabState(),
+      chrome.tabs.get(tabId).catch(() => null)
+    ]);
     const existing = state[tabId];
-    state[tabId] = {
-      tabId,
-      lastActiveAt: Date.now(),
-      ignored: existing?.ignored ?? false,
-      memoryUsageMb: existing?.memoryUsageMb,
-      memorySource: existing?.memorySource,
-      memoryCapturedAt: existing?.memoryCapturedAt
-    };
+    const now = Date.now();
+    state[tabId] = this.composeTabState(tabId, now, existing, {
+      lastActiveAt: now,
+      lastSeenAt: now,
+      url: tab?.url ?? existing?.url,
+      title: tab?.title ?? existing?.title,
+      windowId: tab?.windowId ?? existing?.windowId
+    });
     await setTabState(state);
+    this.broadcastTabStateUpdate(tabId, state[tabId]);
   }
 
   async setTabIgnored(tabId: number, ignored: boolean): Promise<void> {
     const state = await getTabState();
     const existing = state[tabId];
-    if (!existing) {
-      state[tabId] = {
-        tabId,
-        lastActiveAt: Date.now(),
-        ignored,
-        memoryUsageMb: undefined,
-        memorySource: undefined,
-        memoryCapturedAt: undefined
-      };
-    } else {
-      existing.ignored = ignored;
-    }
+    const now = Date.now();
+    state[tabId] = this.composeTabState(tabId, now, existing, { ignored });
     await setTabState(state);
+    this.broadcastTabStateUpdate(tabId, state[tabId]);
   }
 
   async removeTab(tabId: number): Promise<void> {
@@ -263,14 +258,11 @@ export class SleepManager {
     tabState.memoryUsageMb = memoryUsageMb;
     tabState.memorySource = source;
     tabState.memoryCapturedAt = Date.now();
+    if (!tabState.lastSeenAt) {
+      tabState.lastSeenAt = Date.now();
+    }
     await setTabState(state);
-    void sendRuntimeMessage({
-      type: 'tab-state-updated',
-      tabId,
-      state: tabState
-    }).catch((error) => {
-      console.warn('Failed to broadcast tab state update', error);
-    });
+    this.broadcastTabStateUpdate(tabId, tabState);
   }
 
   async handleManualAction(tabId: number, action: SleepAction): Promise<void> {
@@ -338,5 +330,54 @@ export class SleepManager {
     setInterval(() => {
       this.refreshSettings().catch((error) => console.error('Failed to refresh settings', error));
     }, SETTINGS_POLL_SECONDS * 1000);
+  }
+
+  async syncTabMetadata(tab: chrome.tabs.Tab): Promise<void> {
+    if (typeof tab.id !== 'number') {
+      return;
+    }
+    const state = await getTabState();
+    const existing = state[tab.id];
+    const now = Date.now();
+    state[tab.id] = this.composeTabState(tab.id, now, existing, {
+      lastSeenAt: now,
+      url: tab.url ?? existing?.url,
+      title: tab.title ?? existing?.title,
+      windowId: tab.windowId ?? existing?.windowId
+    });
+    await setTabState(state);
+    this.broadcastTabStateUpdate(tab.id, state[tab.id]);
+  }
+
+  private composeTabState(
+    tabId: number,
+    now: number,
+    existing?: TabState,
+    overrides?: Partial<TabState>
+  ): TabState {
+    return {
+      tabId,
+      lastActiveAt: existing?.lastActiveAt ?? now,
+      lastSeenAt: existing?.lastSeenAt ?? now,
+      ignored: existing?.ignored ?? false,
+      pendingReminder: existing?.pendingReminder,
+      memoryUsageMb: existing?.memoryUsageMb,
+      memorySource: existing?.memorySource,
+      memoryCapturedAt: existing?.memoryCapturedAt,
+      url: existing?.url,
+      title: existing?.title,
+      windowId: existing?.windowId,
+      ...overrides
+    } satisfies TabState;
+  }
+
+  private broadcastTabStateUpdate(tabId: number, tabState: TabState): void {
+    void sendRuntimeMessage({
+      type: 'tab-state-updated',
+      tabId,
+      state: tabState
+    }).catch((error) => {
+      console.warn('Failed to broadcast tab state update', error);
+    });
   }
 }
