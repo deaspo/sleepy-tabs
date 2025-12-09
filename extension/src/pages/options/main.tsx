@@ -145,6 +145,12 @@ function OptionsApp(): JSX.Element {
               Keep this on to auto-focus the impacted tab whenever we show inactivity or memory warnings.
               Turn it off if you prefer to stay on your current tab and review the reminder later.
             </span>
+            <br />
+            <span style={{ color: '#5f6368', fontSize: 12 }}>
+              Some Chrome pages (for example `chrome://` or PDF viewer) block in-tab overlays. On those tabs we
+              show a single reminder popup window instead, and it closes automatically when you act or the
+              timer expires.
+            </span>
           </span>
         </label>
 

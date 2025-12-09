@@ -3,6 +3,7 @@
 This guide walks you through setting up Sleepy Tabs Guardian from scratch, including the Chrome extension, the companion native host, and verification steps.
 
 ## 1. Prerequisites
+
 - Node.js 20 or newer and npm 9 or newer (`node -v`, `npm -v`).
 - Chrome or Chromium with support for Manifest V3.
 - Ability to launch Chrome/Chromium with remote debugging enabled.
@@ -95,6 +96,7 @@ Keep this terminal open; it maintains the CDP connection and streams telemetry b
 - Open several tabs and let some go idle. Confirm the background dashboard (`side panel`) populates entries and memory metrics.
 - Trigger the popup action on an active tab to sleep or reload it manually.
 - Observe the reminder modal when a tab reaches the inactivity threshold; verify it auto-accepts after the configured countdown.
+- If Chrome blocks the content reminder overlay (for example on `chrome://` or PDF pages) you will see a lightweight popup window instead. Only one reminder window opens per tab and it closes automatically once you decide or the countdown expires.
 - Check the companion terminal for telemetry output and ensure no unhandled errors appear.
 - Toggle the companion off to confirm the popup still reports memory usage via the hybrid fallback (you may briefly see Chrome's debugger infobar while it samples tabs).
 
@@ -110,6 +112,8 @@ Some teams want a richer memory snapshot sourced from `measureUserAgentSpecificM
 ### Optional: Control Reminder Focus Behavior
 
 Reminders normally bring the impacted tab to the foreground so you can immediately decide whether to pause or reload it. If you prefer to stay on your current tab (for example, while presenting or taking notes), open the **Settings** page and toggle **Switch to the tab when showing reminders**. The setting is on by default to match the legacy behavior, but you can disable it at any time without reloading the extension.
+
+> **Why a new window sometimes appears:** Chrome restricts extensions from injecting UI into privileged pages (e.g., `chrome://`, `chrome-extension://`, PDF viewer, Web Store). When that happens Sleepy Tabs launches a single reminder popup window so the prompt is still visible. The window is recycled per tab and closes gracefully when you act or when the timer finishes.
 
 ## 9. Telemetry Sources at a Glance
 
