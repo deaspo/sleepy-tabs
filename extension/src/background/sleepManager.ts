@@ -162,9 +162,17 @@ export class SleepManager {
     memoryUsageMb?: number
   ): Promise<void> {
     const state = await getTabState();
-    const tabState = state[tabId];
+    let tabState = state[tabId];
     if (!tabState) {
-      return;
+      const tab = await chrome.tabs.get(tabId).catch(() => null);
+      const now = Date.now();
+      // Compose a minimal state so we do not drop memory samples for tabs we have not seen yet.
+      tabState = this.composeTabState(tabId, now, undefined, {
+        url: tab?.url ?? undefined,
+        title: tab?.title ?? 'Unknown tab',
+        windowId: tab?.windowId
+      });
+      state[tabId] = tabState;
     }
 
     const reminderMemoryUsage =
@@ -637,6 +645,13 @@ export class SleepManager {
       tabId,
       state: tabState
     }).catch((error) => {
+      const message = error instanceof Error ? error.message : String(error);
+      if (
+        message.includes('Receiving end does not exist') ||
+        message.includes('The message port closed before a response was received')
+      ) {
+        return;
+      }
       console.warn('Failed to broadcast tab state update', error);
     });
   }
