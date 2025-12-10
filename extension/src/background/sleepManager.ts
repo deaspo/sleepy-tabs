@@ -330,10 +330,21 @@ export class SleepManager {
   async logTelemetry(record: TabTelemetryRecord): Promise<void> {
     try {
       await saveTelemetry(record);
-      await sendRuntimeMessage({ type: 'telemetry-response', payload: [record] });
     } catch (error) {
       console.error('Failed to persist telemetry', error);
+      return;
     }
+
+    void sendRuntimeMessage({ type: 'telemetry-response', payload: [record] }).catch((error) => {
+      const message = error instanceof Error ? error.message : String(error);
+      if (
+        message.includes('Receiving end does not exist') ||
+        message.includes('The message port closed before a response was received')
+      ) {
+        return;
+      }
+      console.debug('Telemetry broadcast failed', error);
+    });
   }
 
   async updateTabMemory(tabId: number, sample: TabMemorySample): Promise<void> {
