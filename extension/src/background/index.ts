@@ -94,10 +94,20 @@ function ensureProcessCapabilityDetection(): Promise<CapabilityReport> {
       return report;
     })
     .catch((error) => {
+      const message = error instanceof Error ? error.message : String(error);
+      if (message.includes("'processes' requires dev channel")) {
+        const fallback: CapabilityReport = {
+          processFallbackSupported: false,
+          processFallbackReason: 'Chrome processes API unavailable on this channel.'
+        };
+        processCapabilityReport = fallback;
+        manager.setProcessFallbackSupport(fallback);
+        return fallback;
+      }
       console.warn('Process capability detection failed', error);
       const fallback: CapabilityReport = {
         processFallbackSupported: false,
-        processFallbackReason: error instanceof Error ? error.message : String(error)
+        processFallbackReason: message
       };
       processCapabilityReport = fallback;
       manager.setProcessFallbackSupport(fallback);
@@ -119,14 +129,21 @@ function detectProcessCapabilities(): Promise<CapabilityReport> {
       chrome.processes.getProcessInfo([], false, () => {
         const error = chrome.runtime.lastError;
         if (error) {
-          resolve({ processFallbackSupported: false, processFallbackReason: error.message });
+          const message = error.message ?? '';
+          const reason = message.includes("'processes' requires dev channel")
+            ? 'Chrome processes API unavailable on this channel.'
+            : message;
+          resolve({ processFallbackSupported: false, processFallbackReason: reason || 'Unavailable' });
           return;
         }
         resolve({ processFallbackSupported: true });
       });
     } catch (error) {
       const reason = error instanceof Error ? error.message : String(error);
-      resolve({ processFallbackSupported: false, processFallbackReason: reason });
+      const mappedReason = reason.includes("'processes' requires dev channel")
+        ? 'Chrome processes API unavailable on this channel.'
+        : reason;
+      resolve({ processFallbackSupported: false, processFallbackReason: mappedReason || 'Unavailable' });
     }
   });
 }

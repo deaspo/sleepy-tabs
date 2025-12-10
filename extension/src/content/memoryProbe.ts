@@ -163,6 +163,12 @@ function dispatchProbePayload(
         }
         return;
       }
+      if (
+        message.includes('The message port closed before a response was received') ||
+        message.includes('Receiving end does not exist')
+      ) {
+        return;
+      }
       console.error('Sleepy Tabs: memory probe sendMessage error', message);
     });
   } catch (error) {
@@ -172,6 +178,12 @@ function dispatchProbePayload(
       return;
     }
     if (message.includes('Extension context invalidated')) {
+      return;
+    }
+    if (
+      message.includes('The message port closed before a response was received') ||
+      message.includes('Receiving end does not exist')
+    ) {
       return;
     }
     console.error('Sleepy Tabs: runtime.sendMessage threw', error);
