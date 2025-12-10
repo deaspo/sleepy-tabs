@@ -7,6 +7,10 @@ import {
   DEFAULT_ENABLE_FULL_PAGE_SAMPLING,
   DEFAULT_ENABLE_PROCESS_FALLBACK,
   DEFAULT_INACTIVITY_TIMEOUT_MINUTES,
+  DEFAULT_MEMORY_ACTION_FOR_ACTIVE_TAB,
+  DEFAULT_MEMORY_ACTION_FOR_INACTIVE_TAB,
+  DEFAULT_MEMORY_PROMPT_FOR_ACTIVE_TAB,
+  DEFAULT_MEMORY_PROMPT_FOR_INACTIVE_TAB,
   DEFAULT_MEMORY_THRESHOLD_MB,
   DEFAULT_PROCESS_THRESHOLD_MB,
   DEFAULT_REMINDER_TIMEOUT_SECONDS,
@@ -18,13 +22,16 @@ const initialSettings: SleepSettings = {
   version: SETTINGS_VERSION,
   inactivityTimeoutMinutes: DEFAULT_INACTIVITY_TIMEOUT_MINUTES,
   memoryThresholdMb: DEFAULT_MEMORY_THRESHOLD_MB,
-  enableAutoReload: true,
   enableAutoSleep: true,
   reminderTimeoutSeconds: DEFAULT_REMINDER_TIMEOUT_SECONDS,
   autoFocusOnReminder: DEFAULT_AUTO_FOCUS_ON_REMINDER,
   enableFullPageSampling: DEFAULT_ENABLE_FULL_PAGE_SAMPLING,
   enableProcessFallback: DEFAULT_ENABLE_PROCESS_FALLBACK,
-  processFallbackThresholdMb: DEFAULT_PROCESS_THRESHOLD_MB
+  processFallbackThresholdMb: DEFAULT_PROCESS_THRESHOLD_MB,
+  memoryActionForActiveTab: DEFAULT_MEMORY_ACTION_FOR_ACTIVE_TAB,
+  memoryActionForInactiveTab: DEFAULT_MEMORY_ACTION_FOR_INACTIVE_TAB,
+  memoryPromptForActiveTab: DEFAULT_MEMORY_PROMPT_FOR_ACTIVE_TAB,
+  memoryPromptForInactiveTab: DEFAULT_MEMORY_PROMPT_FOR_INACTIVE_TAB
 };
 
 function OptionsApp(): JSX.Element {
@@ -56,9 +63,16 @@ function OptionsApp(): JSX.Element {
     }
   }, [capabilities, settings.enableProcessFallback]);
 
-  const handleChange = (key: keyof SleepSettings) => (event: ChangeEvent<HTMLInputElement>) => {
-    const value = event.target.type === 'checkbox' ? event.target.checked : Number(event.target.value);
-    setSettings((prev) => ({ ...prev, [key]: value }));
+  const handleNumberChange = (key: keyof SleepSettings) => (event: ChangeEvent<HTMLInputElement>) => {
+    setSettings((prev) => ({ ...prev, [key]: Number(event.target.value) }));
+  };
+
+  const handleCheckboxChange = (key: keyof SleepSettings) => (event: ChangeEvent<HTMLInputElement>) => {
+    setSettings((prev) => ({ ...prev, [key]: event.target.checked }));
+  };
+
+  const handleSelectChange = (key: keyof SleepSettings) => (event: ChangeEvent<HTMLSelectElement>) => {
+    setSettings((prev) => ({ ...prev, [key]: event.target.value as SleepSettings[keyof SleepSettings] }));
   };
 
   const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
@@ -87,7 +101,7 @@ function OptionsApp(): JSX.Element {
             type="number"
             min={1}
             value={settings.inactivityTimeoutMinutes}
-            onChange={handleChange('inactivityTimeoutMinutes')}
+            onChange={handleNumberChange('inactivityTimeoutMinutes')}
             style={{ padding: '8px 12px', borderRadius: 6, border: '1px solid #ccc' }}
           />
         </label>
@@ -98,10 +112,65 @@ function OptionsApp(): JSX.Element {
             type="number"
             min={100}
             value={settings.memoryThresholdMb}
-            onChange={handleChange('memoryThresholdMb')}
+            onChange={handleNumberChange('memoryThresholdMb')}
             style={{ padding: '8px 12px', borderRadius: 6, border: '1px solid #ccc' }}
           />
         </label>
+
+        <div
+          style={{
+            border: '1px solid #e0e0e0',
+            borderRadius: 8,
+            padding: '12px 16px',
+            display: 'grid',
+            gap: 12,
+            background: '#fafafa'
+          }}
+        >
+          <div style={{ fontWeight: 600 }}>High-memory tab actions</div>
+          <div style={{ color: '#5f6368', fontSize: 12 }}>
+            In-tab JS heap probes usually report 20–50% of the task manager footprint, so the defaults here aim to
+            compensate for that gap.
+          </div>
+          <label style={{ display: 'grid', gap: 4 }}>
+            <span>When the tab is active</span>
+            <select
+              value={settings.memoryActionForActiveTab}
+              onChange={handleSelectChange('memoryActionForActiveTab')}
+              style={{ padding: '8px 12px', borderRadius: 6, border: '1px solid #ccc' }}
+            >
+              <option value="reload">Reload the tab</option>
+              <option value="sleep">Sleep the tab</option>
+            </select>
+          </label>
+          <label style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+            <input
+              type="checkbox"
+              checked={settings.memoryPromptForActiveTab}
+              onChange={handleCheckboxChange('memoryPromptForActiveTab')}
+            />
+            <span>Show a reminder before acting on active tabs</span>
+          </label>
+          <label style={{ display: 'grid', gap: 4 }}>
+            <span>When the tab is inactive</span>
+            <select
+              value={settings.memoryActionForInactiveTab}
+              onChange={handleSelectChange('memoryActionForInactiveTab')}
+              style={{ padding: '8px 12px', borderRadius: 6, border: '1px solid #ccc' }}
+            >
+              <option value="sleep">Sleep the tab</option>
+              <option value="reload">Reload the tab</option>
+            </select>
+          </label>
+          <label style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+            <input
+              type="checkbox"
+              checked={settings.memoryPromptForInactiveTab}
+              onChange={handleCheckboxChange('memoryPromptForInactiveTab')}
+            />
+            <span>Show a reminder before acting on inactive tabs</span>
+          </label>
+        </div>
 
         <label style={{ display: 'grid', gap: 4 }}>
           <span>Reminder timeout (seconds)</span>
@@ -109,7 +178,7 @@ function OptionsApp(): JSX.Element {
             type="number"
             min={5}
             value={settings.reminderTimeoutSeconds}
-            onChange={handleChange('reminderTimeoutSeconds')}
+            onChange={handleNumberChange('reminderTimeoutSeconds')}
             style={{ padding: '8px 12px', borderRadius: 6, border: '1px solid #ccc' }}
           />
         </label>
@@ -118,25 +187,16 @@ function OptionsApp(): JSX.Element {
           <input
             type="checkbox"
             checked={settings.enableAutoSleep}
-            onChange={handleChange('enableAutoSleep')}
+            onChange={handleCheckboxChange('enableAutoSleep')}
           />
           <span>Automatically sleep inactive tabs</span>
-        </label>
-
-        <label style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-          <input
-            type="checkbox"
-            checked={settings.enableAutoReload}
-            onChange={handleChange('enableAutoReload')}
-          />
-          <span>Automatically reload high-memory tabs</span>
         </label>
 
         <label style={{ display: 'flex', alignItems: 'flex-start', gap: 12 }}>
           <input
             type="checkbox"
             checked={settings.autoFocusOnReminder}
-            onChange={handleChange('autoFocusOnReminder')}
+            onChange={handleCheckboxChange('autoFocusOnReminder')}
           />
           <span>
             <strong>Switch to the tab when showing reminders</strong>
@@ -158,7 +218,7 @@ function OptionsApp(): JSX.Element {
           <input
             type="checkbox"
             checked={settings.enableFullPageSampling}
-            onChange={handleChange('enableFullPageSampling')}
+            onChange={handleCheckboxChange('enableFullPageSampling')}
           />
           <span>
             <strong>Enable full-page memory sampling</strong>
@@ -174,7 +234,7 @@ function OptionsApp(): JSX.Element {
           <input
             type="checkbox"
             checked={processFallbackSupported && settings.enableProcessFallback}
-            onChange={handleChange('enableProcessFallback')}
+            onChange={handleCheckboxChange('enableProcessFallback')}
             disabled={!processFallbackSupported}
           />
           <span>
@@ -214,7 +274,7 @@ function OptionsApp(): JSX.Element {
                 type="number"
                 min={100}
                 value={settings.processFallbackThresholdMb}
-                onChange={handleChange('processFallbackThresholdMb')}
+                onChange={handleNumberChange('processFallbackThresholdMb')}
                 style={{ padding: '8px 12px', borderRadius: 6, border: '1px solid #ccc' }}
               />
             </label>

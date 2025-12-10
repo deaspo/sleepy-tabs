@@ -590,7 +590,9 @@ chrome.runtime.onMessage.addListener((message: RuntimeMessage, sender, sendRespo
         reminder.memoryUsageMb,
         reminder.totalHeapMb,
         reminder.fullPageMemoryMb,
-        reminder.heapLimitMb
+        reminder.heapLimitMb,
+        reminder.memoryThresholdMb,
+        reminder.memoryTarget
       )
       .then(() => sendResponse({ success: true }));
     return true;

@@ -5,7 +5,7 @@ This guide covers daily operations, configuration adjustments, and troubleshooti
 ## Extension Surfaces
 
 - **Popup (`chrome.action`)**: Quickly sleep or reload the current tab, view estimated memory, toggle ignore state, and navigate to settings.
-- **Options Page**: Adjust inactivity timeout, memory threshold, reminder countdown, and automation toggles.
+- **Options Page**: Adjust inactivity timeout, calibrated memory thresholds, high-memory actions per tab state, reminder countdown, and automation toggles.
 - **Dashboard (Side Panel)**: Review recent actions, highlight critical tabs, and inspect telemetry history from IndexedDB.
 - **Reminder Modal**: Appears in-page before automatic actions, offering a manual override with a countdown.
 
@@ -13,7 +13,7 @@ This guide covers daily operations, configuration adjustments, and troubleshooti
 
 1. Open the popup and click **Open settings**, or visit `chrome-extension://<id>/src/pages/options/index.html` directly.
 2. Modify timeouts or thresholds. Changes persist immediately to `chrome.storage.local` and sync across sessions.
-3. Use the **Automatically sleep/reload** toggles to disable automation without uninstalling the extension.
+3. Use the **High-memory tab actions** panel to pick separate behaviors for active (reminder + action) and inactive (auto sleep or reload) tabs, and toggle whether a reminder should appear first. The defaults keep a 250 MB JS heap threshold calibrated for in-tab probes, sleeping inactive tabs automatically and prompting before touching the active one.
 
 ## Understanding Tab States
 
@@ -22,6 +22,7 @@ This guide covers daily operations, configuration adjustments, and troubleshooti
 - The popup shows which sampler produced the current estimate (Native companion, Chrome debugger, or in-tab probe) plus the capture time so you can reason about fidelity before acting.
 - Existing telemetry history is automatically backfilled as "Native companion" on upgrade so older records remain consistent; clearing the dashboard database is no longer required.
 - When a tab is slept (`chrome.tabs.discard`), Chrome may purge its content until refocused.
+- High-memory automation defaults to auto-sleeping inactive tabs while prompting before acting on active tabs. Dashboard and telemetry entries now log which threshold fired, whether a reminder was shown, and which tab state was targeted.
 
 ## Telemetry Dashboard Tips
 

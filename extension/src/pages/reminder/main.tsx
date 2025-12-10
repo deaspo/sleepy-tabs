@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import ReactDOM from 'react-dom/client';
 
 import { notifyReminderDecision } from '../../shared/messaging';
-import type { SleepAction, TabTelemetryRecord } from '../../shared/types';
+import type { MemoryActionTarget, SleepAction, TabTelemetryRecord } from '../../shared/types';
 
 function useCountdown(seconds: number, onElapsed: () => void): number {
   const [remaining, setRemaining] = useState(seconds);
@@ -44,13 +44,19 @@ function ReminderApp(): JSX.Element {
     ? Number(params.get('memoryCapturedAt'))
     : undefined;
   const memorySource = params.get('memorySource') ?? undefined;
+  const memoryThresholdMb = params.get('memoryThresholdMb')
+    ? Number(params.get('memoryThresholdMb'))
+    : undefined;
+  const memoryTarget = (params.get('memoryTarget') ?? undefined) as MemoryActionTarget | undefined;
 
   const remaining = useCountdown(timeoutSeconds, () => {
     notifyReminderDecision(tabId, action, true, reason, {
       memoryUsageMb,
       totalHeapMb,
       fullPageMemoryMb,
-      heapLimitMb
+      heapLimitMb,
+      memoryThresholdMb,
+      memoryTarget
     });
     window.close();
   });
@@ -60,7 +66,9 @@ function ReminderApp(): JSX.Element {
       memoryUsageMb,
       totalHeapMb,
       fullPageMemoryMb,
-      heapLimitMb
+      heapLimitMb,
+      memoryThresholdMb,
+      memoryTarget
     });
     window.close();
   };
@@ -105,6 +113,12 @@ function ReminderApp(): JSX.Element {
               ? `Sampled ${new Date(memoryCapturedAt).toLocaleTimeString()} (${memorySource ?? 'unknown source'})`
               : ''}
           </div>
+          {typeof memoryThresholdMb === 'number' && (
+            <div style={{ color: '#5f6368', marginTop: 6, fontSize: 12 }}>
+              Configured threshold: {memoryThresholdMb.toFixed(0)} MB{' '}
+              {memoryTarget === 'active' ? '(active tab)' : '(inactive tab)'}.
+            </div>
+          )}
         </div>
       ) : (
         <p>This tab has been inactive for a while.</p>

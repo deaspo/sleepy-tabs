@@ -1,5 +1,5 @@
 import { notifyReminderDecision } from '../shared/messaging';
-import type { SleepAction, TabTelemetryRecord } from '../shared/types';
+import type { MemoryActionTarget, SleepAction, TabTelemetryRecord } from '../shared/types';
 
 type ReminderPayload = {
   type: 'sleepy-tabs-reminder';
@@ -13,6 +13,8 @@ type ReminderPayload = {
   fullPageMemoryMb?: number;
   memorySource?: TabTelemetryRecord['memorySource'];
   memoryCapturedAt?: number;
+  memoryThresholdMb?: number;
+  memoryTarget?: MemoryActionTarget;
 };
 
 const OVERLAY_ID = 'sleepy-tabs-reminder-overlay';
@@ -122,6 +124,16 @@ function renderOverlay(payload: ReminderPayload): void {
 
     metricsContainer.appendChild(metricsList);
     metricsContainer.appendChild(sampleMeta);
+
+    if (typeof payload.memoryThresholdMb === 'number') {
+      const thresholdMeta = document.createElement('div');
+      thresholdMeta.style.marginTop = '8px';
+      thresholdMeta.style.color = '#5f6368';
+      thresholdMeta.style.fontSize = '12px';
+      const targetLabel = payload.memoryTarget === 'active' ? 'active tab' : 'inactive tab';
+      thresholdMeta.textContent = `Configured threshold: ${payload.memoryThresholdMb.toFixed(0)} MB (${targetLabel}).`;
+      metricsContainer.appendChild(thresholdMeta);
+    }
   } else {
     info.textContent = 'This tab has been inactive for a while. We can pause it to save resources.';
   }
@@ -180,7 +192,9 @@ function renderOverlay(payload: ReminderPayload): void {
         memoryUsageMb: payload.memoryUsageMb,
         totalHeapMb: payload.totalHeapMb,
         heapLimitMb: payload.heapLimitMb,
-        fullPageMemoryMb: payload.fullPageMemoryMb
+        fullPageMemoryMb: payload.fullPageMemoryMb,
+        memoryThresholdMb: payload.memoryThresholdMb,
+        memoryTarget: payload.memoryTarget
       });
     } else {
       countdown.textContent = `Taking action in ${remaining} seconds...`;
@@ -194,7 +208,9 @@ function renderOverlay(payload: ReminderPayload): void {
       memoryUsageMb: payload.memoryUsageMb,
       totalHeapMb: payload.totalHeapMb,
       heapLimitMb: payload.heapLimitMb,
-      fullPageMemoryMb: payload.fullPageMemoryMb
+      fullPageMemoryMb: payload.fullPageMemoryMb,
+      memoryThresholdMb: payload.memoryThresholdMb,
+      memoryTarget: payload.memoryTarget
     });
   };
 

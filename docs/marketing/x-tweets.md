@@ -4,7 +4,7 @@
 Browser tabs shouldn't dictate battery life. Meet Sleepy Tabs Guardian -- an open-source Chrome extension that auto-sleeps idle tabs and refreshes memory hogs. #ChromeExtension #WebPerf
 
 **Tweet 2**
-Defaults: 5-minute inactivity timeout, 250 MB reload threshold. Adjustable from a slick options page with per-tab ignore toggles and instant overrides. #Productivity
+Defaults: 5-minute inactivity timeout, 250 MB JS heap threshold (calibrated for probe values), and separate actions for active (reminder) vs inactive (sleep) tabs. Adjustable from a slick options page with per-tab ignore toggles and instant overrides. #Productivity
 
 **Tweet 3**
 Forgetful tab hoarder? Same. Built-in memory saver kicks in whenever it wants and you can't set the timeout. Sleepy Tabs gives you the controls Chrome won't. #Chrome #MemorySaver

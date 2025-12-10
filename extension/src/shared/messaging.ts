@@ -1,6 +1,7 @@
 import type {
   CompanionOutboundMessage,
   FocusTabResponse,
+  MemoryActionTarget,
   RuntimeMessage,
   SleepAction,
   TabState,
@@ -109,6 +110,8 @@ export function notifyReminderDecision(
     totalHeapMb?: number;
     heapLimitMb?: number;
     fullPageMemoryMb?: number;
+    memoryThresholdMb?: number;
+    memoryTarget?: MemoryActionTarget;
   }
 ): void {
   chrome.runtime.sendMessage({

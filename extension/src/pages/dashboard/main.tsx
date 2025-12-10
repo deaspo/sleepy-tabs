@@ -75,6 +75,41 @@ function memoryMetricLines(sample: MemoryLike): string[] {
   return lines;
 }
 
+function formatMemoryTrigger(record: TabTelemetryRecord): string | null {
+  if (typeof record.memoryThresholdMb !== 'number' || !record.memoryTarget) {
+    return null;
+  }
+  const targetLabel = record.memoryTarget === 'active' ? 'active tab' : 'inactive tab';
+  const thresholdText = `${record.memoryThresholdMb.toFixed(0)} MB`;
+  if (record.reason === 'timeout') {
+    return `Reminder timed out @ ${thresholdText} (${targetLabel})`;
+  }
+  if (record.reason === 'memory') {
+    const mode = record.memoryPrompted === false ? 'Automatic action' : 'Reminder shown';
+    return `${mode} @ ${thresholdText} (${targetLabel})`;
+  }
+  return null;
+}
+
+function formatReasonLabel(record: TabTelemetryRecord): string {
+  if (record.reason === 'memory') {
+    return record.memoryTarget === 'active' ? 'Memory (active tab)' : 'Memory (inactive tab)';
+  }
+  if (record.reason === 'timeout') {
+    if (record.memoryTarget) {
+      return record.memoryPrompted === false ? 'Memory auto action' : 'Memory reminder timeout';
+    }
+    return 'Reminder timeout';
+  }
+  if (record.reason === 'inactivity') {
+    return 'Inactivity';
+  }
+  if (record.reason === 'manual') {
+    return 'Manual override';
+  }
+  return record.reason;
+}
+
 function resolveMemorySample(record: TabTelemetryRecord, state?: TabState): MemoryLike {
   if (!state) {
     return record;
@@ -288,6 +323,8 @@ function DashboardApp(): JSX.Element {
             {criticalRecords.map((record) => {
               const liveState = tabStates[record.tabId];
               const memorySample = resolveMemorySample(record, liveState);
+              const memoryTrigger = formatMemoryTrigger(record);
+              const reasonLabel = formatReasonLabel(record);
               return (
                 <li
                   key={`critical-${record.id ?? `${record.tabId}-${record.timestamp}`}`}
@@ -303,6 +340,7 @@ function DashboardApp(): JSX.Element {
                   <p style={{ margin: 0, fontSize: 13 }}>
                     Peak memory {formatMemoryHeadline(memorySample)} at {formatTime(record.timestamp)}
                   </p>
+                  <p style={{ margin: '4px 0', fontSize: 12, color: '#202124' }}>{reasonLabel}</p>
                   <div style={{ margin: '4px 0 0 0', fontSize: 12, color: '#5f6368' }}>
                     {memoryMetricLines(memorySample).map((line, index) => (
                       <div key={`${record.id ?? record.tabId}-critical-${index}`}>{line}</div>
@@ -334,6 +372,7 @@ function DashboardApp(): JSX.Element {
               {records.map((record) => {
                 const liveState = tabStates[record.tabId];
                 const memorySample = resolveMemorySample(record, liveState);
+                const memoryTrigger = formatMemoryTrigger(record);
                 return (
                   <tr
                     key={record.id ?? `${record.tabId}-${record.timestamp}`}
@@ -341,7 +380,12 @@ function DashboardApp(): JSX.Element {
                   >
                     <td style={{ padding: '8px 12px', whiteSpace: 'nowrap' }}>{formatTime(record.timestamp)}</td>
                     <td style={{ padding: '8px 12px', textTransform: 'capitalize' }}>{record.action}</td>
-                    <td style={{ padding: '8px 12px', textTransform: 'capitalize' }}>{record.reason}</td>
+                    <td style={{ padding: '8px 12px' }}>
+                      <div>{formatReasonLabel(record)}</div>
+                      {memoryTrigger && (
+                        <div style={{ fontSize: 11, color: '#5f6368', marginTop: 4 }}>{memoryTrigger}</div>
+                      )}
+                    </td>
                     <td style={{ padding: '8px 12px' }}>
                       {memoryMetricLines(memorySample).map((line, index) => (
                         <div key={`${record.id ?? record.tabId}-recent-${index}`}>{line}</div>

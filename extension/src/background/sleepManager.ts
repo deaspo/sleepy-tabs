@@ -14,6 +14,7 @@ import { saveTelemetry } from '../shared/telemetryDb';
 import type {
   CapabilityReport,
   ConsentState,
+  MemoryActionTarget,
   NativeHostStatus,
   SleepAction,
   SleepSettings,
@@ -42,6 +43,14 @@ export class SleepManager {
   private processFallbackReason?: string;
   private activeReminderWindows = new Map<number, number>();
   private reminderTimeouts = new Map<number, ReturnType<typeof setTimeout>>();
+  private reminderMemoryContext = new Map<
+    number,
+    {
+      memoryThresholdMb?: number;
+      memoryTarget?: MemoryActionTarget;
+      memoryPrompted: boolean;
+    }
+  >();
 
   async init(): Promise<void> {
     this.settings = await getSettings();
@@ -119,15 +128,18 @@ export class SleepManager {
     this.processSampleCache.delete(tabId);
     this.clearReminderTimeout(tabId);
     await this.closeExistingReminderWindow(tabId);
+    this.reminderMemoryContext.delete(tabId);
     postToCompanion({ type: 'untrack-tab', tabId });
   }
 
   async evaluateTabs(): Promise<void> {
     const [tabs, state, settings] = await Promise.all([
-      chrome.tabs.query({ active: false, discarded: false }),
+      chrome.tabs.query({ discarded: false }),
       getTabState(),
       getSettings()
     ]);
+
+    this.settings = settings;
 
     for (const tab of tabs) {
       if (typeof tab.id !== 'number') {
@@ -139,18 +151,55 @@ export class SleepManager {
         continue;
       }
 
+      const isActive = Boolean(tab.active);
       const inactivityMs = Date.now() - tabInfo.lastActiveAt;
       const inactivityThresholdMs = settings.inactivityTimeoutMinutes * 60 * 1000;
-      const shouldSleep = settings.enableAutoSleep && inactivityMs >= inactivityThresholdMs;
-      const memoryThresholdMb = settings.memoryThresholdMb ?? DEFAULT_MEMORY_THRESHOLD_MB;
-      const memoryUsage = Math.max(tabInfo.memoryUsageMb ?? 0, tabInfo.fullPageMemoryMb ?? 0);
-      const shouldReload =
-        settings.enableAutoReload && memoryUsage > memoryThresholdMb && !tab.discarded;
+      const shouldSleepForInactivity =
+        !isActive && settings.enableAutoSleep && inactivityMs >= inactivityThresholdMs;
 
-      if (shouldReload) {
-        await this.promptAndAct(tab.id, 'reload', 'memory', memoryUsage);
-      } else if (shouldSleep) {
-        await this.promptAndAct(tab.id, 'sleep', 'inactivity', memoryUsage);
+      const memoryThresholdMb = settings.memoryThresholdMb ?? DEFAULT_MEMORY_THRESHOLD_MB;
+      const memoryUsage = this.resolveTabMemoryUsage(tabInfo) ?? 0;
+      const overMemoryThreshold = memoryUsage > memoryThresholdMb && !tab.discarded;
+
+      if (overMemoryThreshold) {
+        const memoryTarget: MemoryActionTarget = isActive ? 'active' : 'inactive';
+        const preferredAction = isActive
+          ? settings.memoryActionForActiveTab
+          : settings.memoryActionForInactiveTab;
+        const shouldPrompt = isActive
+          ? settings.memoryPromptForActiveTab
+          : settings.memoryPromptForInactiveTab;
+
+        if (tabInfo.pendingReminder && shouldPrompt) {
+          continue;
+        }
+
+        const metrics = {
+          totalHeapMb: tabInfo.totalHeapMb,
+          fullPageMemoryMb: tabInfo.fullPageMemoryMb,
+          heapLimitMb: tabInfo.heapLimitMb,
+          memoryThresholdMb,
+          memoryTarget,
+          memoryPrompted: shouldPrompt
+        };
+
+        if (shouldPrompt) {
+          await this.promptAndAct(tab.id, preferredAction, 'memory', memoryUsage, metrics);
+        } else {
+          await this.executeAction(tab.id, preferredAction, 'memory', memoryUsage, false, metrics);
+        }
+        continue;
+      }
+
+      if (shouldSleepForInactivity) {
+        if (tabInfo.pendingReminder === 'sleep') {
+          continue;
+        }
+        await this.promptAndAct(tab.id, 'sleep', 'inactivity', memoryUsage, {
+          totalHeapMb: tabInfo.totalHeapMb,
+          fullPageMemoryMb: tabInfo.fullPageMemoryMb,
+          heapLimitMb: tabInfo.heapLimitMb
+        });
       }
     }
   }
@@ -159,7 +208,15 @@ export class SleepManager {
     tabId: number,
     action: SleepAction,
     reason: TabTelemetryRecord['reason'],
-    memoryUsageMb?: number
+    memoryUsageMb?: number,
+    metrics?: {
+      totalHeapMb?: number;
+      fullPageMemoryMb?: number;
+      heapLimitMb?: number;
+      memoryThresholdMb?: number;
+      memoryTarget?: MemoryActionTarget;
+      memoryPrompted?: boolean;
+    }
   ): Promise<void> {
     const state = await getTabState();
     let tabState = state[tabId];
@@ -181,11 +238,38 @@ export class SleepManager {
 
     tabState.pendingReminder = action;
     await setTabState(state);
-    this.scheduleReminderTimeout(tabId, action, reason, reminderMemoryUsage, {
-      totalHeapMb: tabState.totalHeapMb,
-      fullPageMemoryMb: tabState.fullPageMemoryMb,
-      heapLimitMb: tabState.heapLimitMb
-    });
+    this.broadcastTabStateUpdate(tabId, tabState);
+
+    const reminderMetrics = {
+      totalHeapMb: metrics?.totalHeapMb ?? tabState.totalHeapMb,
+      fullPageMemoryMb: metrics?.fullPageMemoryMb ?? tabState.fullPageMemoryMb,
+      heapLimitMb: metrics?.heapLimitMb ?? tabState.heapLimitMb,
+      memoryThresholdMb:
+        typeof metrics?.memoryThresholdMb === 'number'
+          ? metrics.memoryThresholdMb
+          : reason === 'memory'
+            ? this.settings?.memoryThresholdMb ?? DEFAULT_MEMORY_THRESHOLD_MB
+            : undefined,
+      memoryTarget: metrics?.memoryTarget,
+      memoryPrompted: metrics?.memoryPrompted ?? true
+    } satisfies {
+      totalHeapMb?: number;
+      fullPageMemoryMb?: number;
+      heapLimitMb?: number;
+      memoryThresholdMb?: number;
+      memoryTarget?: MemoryActionTarget;
+      memoryPrompted?: boolean;
+    };
+
+    if (reason === 'memory') {
+      this.reminderMemoryContext.set(tabId, {
+        memoryThresholdMb: reminderMetrics.memoryThresholdMb,
+        memoryTarget: reminderMetrics.memoryTarget,
+        memoryPrompted: true
+      });
+    }
+
+    this.scheduleReminderTimeout(tabId, action, reason, reminderMemoryUsage, reminderMetrics);
 
     const liveTab = await chrome.tabs.get(tabId).catch(() => null);
     const requiresStandalone = !this.canInjectReminder(liveTab);
@@ -195,14 +279,21 @@ export class SleepManager {
       }
       try {
         await this.closeExistingReminderWindow(tabId);
-        await this.launchStandaloneReminder(tabId, action, reason, reminderMemoryUsage, tabState);
+        await this.launchStandaloneReminder(tabId, action, reason, reminderMemoryUsage, tabState, {
+          memoryThresholdMb: reminderMetrics.memoryThresholdMb,
+          memoryTarget: reminderMetrics.memoryTarget
+        });
       } catch (fallbackError) {
         console.warn('Standalone reminder failed, proceeding automatically', fallbackError);
         this.clearReminderTimeout(tabId);
+        const context = this.reminderMemoryContext.get(tabId);
+        this.reminderMemoryContext.delete(tabId);
+        await this.clearPendingReminderState(tabId);
         await this.executeAction(tabId, action, reason, reminderMemoryUsage, true, {
-          totalHeapMb: tabState.totalHeapMb,
-          fullPageMemoryMb: tabState.fullPageMemoryMb,
-          heapLimitMb: tabState.heapLimitMb
+          ...reminderMetrics,
+          memoryThresholdMb: context?.memoryThresholdMb ?? reminderMetrics.memoryThresholdMb,
+          memoryTarget: context?.memoryTarget ?? reminderMetrics.memoryTarget,
+          memoryPrompted: context?.memoryPrompted ?? reminderMetrics.memoryPrompted
         });
       }
       return;
@@ -223,20 +314,29 @@ export class SleepManager {
         heapLimitMb: tabState.heapLimitMb,
         fullPageMemoryMb: tabState.fullPageMemoryMb,
         memorySource: tabState.memorySource,
-        memoryCapturedAt: tabState.memoryCapturedAt
+        memoryCapturedAt: tabState.memoryCapturedAt,
+        memoryThresholdMb: reminderMetrics.memoryThresholdMb,
+        memoryTarget: reminderMetrics.memoryTarget
       });
     } catch (error) {
       console.warn('Reminder message failed, attempting standalone reminder', error);
       try {
         await this.closeExistingReminderWindow(tabId);
-        await this.launchStandaloneReminder(tabId, action, reason, reminderMemoryUsage, tabState);
+        await this.launchStandaloneReminder(tabId, action, reason, reminderMemoryUsage, tabState, {
+          memoryThresholdMb: reminderMetrics.memoryThresholdMb,
+          memoryTarget: reminderMetrics.memoryTarget
+        });
       } catch (fallbackError) {
         console.warn('Standalone reminder failed, proceeding automatically', fallbackError);
         this.clearReminderTimeout(tabId);
+        const context = this.reminderMemoryContext.get(tabId);
+        this.reminderMemoryContext.delete(tabId);
+        await this.clearPendingReminderState(tabId);
         await this.executeAction(tabId, action, reason, reminderMemoryUsage, true, {
-          totalHeapMb: tabState.totalHeapMb,
-          fullPageMemoryMb: tabState.fullPageMemoryMb,
-          heapLimitMb: tabState.heapLimitMb
+          ...reminderMetrics,
+          memoryThresholdMb: context?.memoryThresholdMb ?? reminderMetrics.memoryThresholdMb,
+          memoryTarget: context?.memoryTarget ?? reminderMetrics.memoryTarget,
+          memoryPrompted: context?.memoryPrompted ?? reminderMetrics.memoryPrompted
         });
       }
     }
@@ -250,7 +350,9 @@ export class SleepManager {
     memoryUsageMb?: number,
     totalHeapMb?: number,
     fullPageMemoryMb?: number,
-    heapLimitMb?: number
+    heapLimitMb?: number,
+    memoryThresholdMb?: number,
+    memoryTarget?: MemoryActionTarget
   ): Promise<void> {
     const state = await getTabState();
     let tabState = state[tabId];
@@ -266,15 +368,31 @@ export class SleepManager {
     }
     delete tabState.pendingReminder;
     await setTabState(state);
+    this.broadcastTabStateUpdate(tabId, tabState);
 
     this.clearReminderTimeout(tabId);
     await this.closeExistingReminderWindow(tabId);
+    const reminderContext = this.reminderMemoryContext.get(tabId);
+    if (reminderContext) {
+      this.reminderMemoryContext.delete(tabId);
+    }
+    const context = reminderContext ??
+      (reason === 'memory'
+        ? {
+            memoryThresholdMb,
+            memoryTarget,
+            memoryPrompted: true
+          }
+        : undefined);
 
     if (proceed) {
       await this.executeAction(tabId, action, reason, memoryUsageMb, false, {
         totalHeapMb,
         fullPageMemoryMb,
-        heapLimitMb
+        heapLimitMb,
+        memoryThresholdMb: context?.memoryThresholdMb,
+        memoryTarget: context?.memoryTarget,
+        memoryPrompted: context?.memoryPrompted ?? true
       });
     }
   }
@@ -289,6 +407,9 @@ export class SleepManager {
       totalHeapMb?: number;
       fullPageMemoryMb?: number;
       heapLimitMb?: number;
+      memoryThresholdMb?: number;
+      memoryTarget?: MemoryActionTarget;
+      memoryPrompted?: boolean;
     }
   ): Promise<void> {
     const stateSnapshot = await getTabState();
@@ -323,7 +444,10 @@ export class SleepManager {
       memoryCapturedAt: tabState?.memoryCapturedAt,
       processFallbackThresholdMb: tabState?.processFallbackThresholdMb,
       timestamp: Date.now(),
-      critical: reason === 'memory'
+      critical: reason === 'memory',
+      memoryThresholdMb: metrics?.memoryThresholdMb,
+      memoryTarget: metrics?.memoryTarget,
+      memoryPrompted: metrics?.memoryPrompted
     });
   }
 
@@ -714,7 +838,14 @@ export class SleepManager {
     action: SleepAction,
     reason: TabTelemetryRecord['reason'],
     memoryUsageMb: number | undefined,
-    metrics: { totalHeapMb?: number; fullPageMemoryMb?: number; heapLimitMb?: number }
+    metrics: {
+      totalHeapMb?: number;
+      fullPageMemoryMb?: number;
+      heapLimitMb?: number;
+      memoryThresholdMb?: number;
+      memoryTarget?: MemoryActionTarget;
+      memoryPrompted?: boolean;
+    }
   ): void {
     const timeoutSeconds = this.settings?.reminderTimeoutSeconds ?? DEFAULT_REMINDER_TIMEOUT_SECONDS;
     const timeoutMs = Math.max(1, timeoutSeconds) * 1000;
@@ -733,12 +864,29 @@ export class SleepManager {
     }
   }
 
+  private async clearPendingReminderState(tabId: number): Promise<void> {
+    const state = await getTabState();
+    const tabState = state[tabId];
+    if (tabState?.pendingReminder) {
+      delete tabState.pendingReminder;
+      await setTabState(state);
+      this.broadcastTabStateUpdate(tabId, tabState);
+    }
+  }
+
   private async handleReminderTimeout(
     tabId: number,
     action: SleepAction,
     reason: TabTelemetryRecord['reason'],
     memoryUsageMb: number | undefined,
-    metrics: { totalHeapMb?: number; fullPageMemoryMb?: number; heapLimitMb?: number }
+    metrics: {
+      totalHeapMb?: number;
+      fullPageMemoryMb?: number;
+      heapLimitMb?: number;
+      memoryThresholdMb?: number;
+      memoryTarget?: MemoryActionTarget;
+      memoryPrompted?: boolean;
+    }
   ): Promise<void> {
     this.reminderTimeouts.delete(tabId);
     await this.closeExistingReminderWindow(tabId);
@@ -747,11 +895,17 @@ export class SleepManager {
     if (tabState?.pendingReminder) {
       delete tabState.pendingReminder;
       await setTabState(state);
+      this.broadcastTabStateUpdate(tabId, tabState);
     }
+    const context = this.reminderMemoryContext.get(tabId);
+    this.reminderMemoryContext.delete(tabId);
     const resolvedMetrics = {
       totalHeapMb: metrics.totalHeapMb ?? tabState?.totalHeapMb,
       fullPageMemoryMb: metrics.fullPageMemoryMb ?? tabState?.fullPageMemoryMb,
-      heapLimitMb: metrics.heapLimitMb ?? tabState?.heapLimitMb
+      heapLimitMb: metrics.heapLimitMb ?? tabState?.heapLimitMb,
+      memoryThresholdMb: context?.memoryThresholdMb ?? metrics.memoryThresholdMb,
+      memoryTarget: context?.memoryTarget ?? metrics.memoryTarget,
+      memoryPrompted: context?.memoryPrompted ?? metrics.memoryPrompted ?? true
     };
     const resolvedMemoryUsage =
       typeof memoryUsageMb === 'number' ? memoryUsageMb : this.resolveTabMemoryUsage(tabState);
@@ -763,7 +917,11 @@ export class SleepManager {
     action: SleepAction,
     reason: TabTelemetryRecord['reason'],
     memoryUsageMb: number | undefined,
-    tabState: TabState
+    tabState: TabState,
+    metrics?: {
+      memoryThresholdMb?: number;
+      memoryTarget?: MemoryActionTarget;
+    }
   ): Promise<void> {
     const reminderUrl = new URL(chrome.runtime.getURL('src/pages/reminder/index.html'));
     reminderUrl.searchParams.set('tabId', String(tabId));
@@ -793,6 +951,12 @@ export class SleepManager {
     }
     if (tabState.memorySource) {
       reminderUrl.searchParams.set('memorySource', tabState.memorySource);
+    }
+    if (typeof metrics?.memoryThresholdMb === 'number') {
+      reminderUrl.searchParams.set('memoryThresholdMb', String(metrics.memoryThresholdMb));
+    }
+    if (metrics?.memoryTarget) {
+      reminderUrl.searchParams.set('memoryTarget', metrics.memoryTarget);
     }
 
     await new Promise<void>((resolve, reject) => {

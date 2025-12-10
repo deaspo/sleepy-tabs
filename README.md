@@ -3,15 +3,17 @@
 Sleepy Tabs Guardian is a Manifest V3 Chrome/Chromium extension that automatically freezes inactive tabs, reloads high-memory pages, and surfaces rich telemetry in a dashboard. A hybrid pipeline combines lightweight in-tab sampling, Chrome's debugger API, and an optional Node.js + Playwright companion service to collect CDP metrics and drive lifecycle actions such as `Page.setWebLifecycleState`.
 
 ## Features
+
 - Auto-sleep inactive tabs after a configurable timeout (default 5 minutes) with per-tab override switches.
-- Auto-reload tabs exceeding a configurable memory limit (default 250 MB) using CDP lifecycle commands.
+- Auto-manage high-memory tabs with per-state actions (default JS heap threshold 250 MB, reminder for active tabs, sleep for inactive) using CDP lifecycle commands.
 - IndexedDB-powered telemetry log with dashboard highlighting critical pages and recent actions.
 - Consent workflow plus in-page reminders with countdowns that auto-accept actions if the user is away.
 - Options page for thresholds, reminder timers, and automation toggles.
 - Hybrid telemetry stack: `performance.memory` probes run inside each tab, Chrome's debugger API gathers fallback CDP metrics when the companion is offline, and the native messaging bridge delivers the richest dataset when available.
 
 ## Repository Layout
-```
+
+```text
 .
 ├── companion/              # Node.js native messaging companion (Playwright + CDP)
 ├── extension/              # MV3 extension source (Vite + React + TypeScript)
@@ -21,6 +23,7 @@ Sleepy Tabs Guardian is a Manifest V3 Chrome/Chromium extension that automatical
 ```
 
 ## Prerequisites
+
 - Node.js 20+
 - npm 9+
 - Chrome/Chromium launched with the remote debugging port open (default `localhost:9222`).

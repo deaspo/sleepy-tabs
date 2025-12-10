@@ -1,16 +1,20 @@
 export type SleepAction = 'sleep' | 'reload';
+export type MemoryActionTarget = 'active' | 'inactive';
 
 export interface SleepSettings {
   version: number;
   inactivityTimeoutMinutes: number;
   memoryThresholdMb: number;
-  enableAutoReload: boolean;
   enableAutoSleep: boolean;
   reminderTimeoutSeconds: number;
   autoFocusOnReminder: boolean;
   enableFullPageSampling: boolean;
   enableProcessFallback: boolean;
   processFallbackThresholdMb: number;
+  memoryActionForActiveTab: SleepAction;
+  memoryActionForInactiveTab: SleepAction;
+  memoryPromptForActiveTab: boolean;
+  memoryPromptForInactiveTab: boolean;
 }
 
 export interface CapabilityReport {
@@ -63,6 +67,9 @@ export interface TabTelemetryRecord {
   reason: 'inactivity' | 'memory' | 'manual' | 'timeout';
   timestamp: number;
   critical: boolean;
+  memoryThresholdMb?: number;
+  memoryTarget?: MemoryActionTarget;
+  memoryPrompted?: boolean;
 }
 
 export type CompanionInboundMessage =
@@ -156,6 +163,8 @@ export interface ReminderDecisionMessage {
   totalHeapMb?: number;
   fullPageMemoryMb?: number;
   heapLimitMb?: number;
+  memoryThresholdMb?: number;
+  memoryTarget?: MemoryActionTarget;
 }
 
 export interface ManualActionMessage {
