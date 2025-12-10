@@ -21,6 +21,15 @@ function formatClock(value: number): string {
   return date.toLocaleTimeString();
 }
 
+type MemoryLike = {
+  memoryUsageMb?: number;
+  totalHeapMb?: number;
+  heapLimitMb?: number;
+  fullPageMemoryMb?: number;
+  memorySource?: TabTelemetryRecord['memorySource'];
+  memoryCapturedAt?: number;
+};
+
 function describeMemorySource(source?: TabTelemetryRecord['memorySource']): string {
   switch (source) {
     case 'companion':
@@ -36,32 +45,60 @@ function describeMemorySource(source?: TabTelemetryRecord['memorySource']): stri
   }
 }
 
-function formatMemoryDetail(record: TabTelemetryRecord): string {
-  const sourceLabel = describeMemorySource(record.memorySource);
-  const sampledAt = record.memoryCapturedAt ? `Sampled ${formatClock(record.memoryCapturedAt)}` : null;
+function formatMemoryDetail(sample: MemoryLike): string {
+  const sourceLabel = describeMemorySource(sample.memorySource);
+  const sampledAt = sample.memoryCapturedAt ? `Sampled ${formatClock(sample.memoryCapturedAt)}` : null;
   return [sourceLabel, sampledAt].filter(Boolean).join(' • ');
 }
 
-function formatMemoryHeadline(record: TabTelemetryRecord): string {
-  const preferred = typeof record.fullPageMemoryMb === 'number' ? record.fullPageMemoryMb : record.memoryUsageMb;
+function formatMemoryHeadline(sample: MemoryLike): string {
+  const preferred =
+    typeof sample.fullPageMemoryMb === 'number' ? sample.fullPageMemoryMb : sample.memoryUsageMb;
   return typeof preferred === 'number' ? `${preferred.toFixed(2)} MB` : 'unknown';
 }
 
-function memoryMetricLines(record: TabTelemetryRecord): string[] {
+function memoryMetricLines(sample: MemoryLike): string[] {
   const lines: string[] = [];
-  if (typeof record.memoryUsageMb === 'number') {
-    lines.push(`JS heap: ${record.memoryUsageMb.toFixed(2)} MB`);
+  if (typeof sample.memoryUsageMb === 'number') {
+    lines.push(`JS heap: ${sample.memoryUsageMb.toFixed(2)} MB`);
   }
-  if (typeof record.fullPageMemoryMb === 'number') {
-    lines.push(`Full page: ${record.fullPageMemoryMb.toFixed(2)} MB`);
+  if (typeof sample.fullPageMemoryMb === 'number') {
+    lines.push(`Full page: ${sample.fullPageMemoryMb.toFixed(2)} MB`);
   }
-  if (typeof record.totalHeapMb === 'number') {
-    const limitSuffix = typeof record.heapLimitMb === 'number' ? ` / ${record.heapLimitMb.toFixed(2)} MB limit` : '';
-    lines.push(`Heap total: ${record.totalHeapMb.toFixed(2)} MB${limitSuffix}`);
-  } else if (typeof record.heapLimitMb === 'number') {
-    lines.push(`Heap limit: ${record.heapLimitMb.toFixed(2)} MB`);
+  if (typeof sample.totalHeapMb === 'number') {
+    const limitSuffix =
+      typeof sample.heapLimitMb === 'number' ? ` / ${sample.heapLimitMb.toFixed(2)} MB limit` : '';
+    lines.push(`Heap total: ${sample.totalHeapMb.toFixed(2)} MB${limitSuffix}`);
+  } else if (typeof sample.heapLimitMb === 'number') {
+    lines.push(`Heap limit: ${sample.heapLimitMb.toFixed(2)} MB`);
   }
   return lines;
+}
+
+function resolveMemorySample(record: TabTelemetryRecord, state?: TabState): MemoryLike {
+  if (!state) {
+    return record;
+  }
+
+  const hasStateMetric =
+    typeof state.memoryUsageMb === 'number' ||
+    typeof state.fullPageMemoryMb === 'number' ||
+    typeof state.totalHeapMb === 'number' ||
+    typeof state.heapLimitMb === 'number';
+
+  if (!hasStateMetric) {
+    return record;
+  }
+
+  return {
+    memoryUsageMb: typeof state.memoryUsageMb === 'number' ? state.memoryUsageMb : record.memoryUsageMb,
+    totalHeapMb: typeof state.totalHeapMb === 'number' ? state.totalHeapMb : record.totalHeapMb,
+    heapLimitMb: typeof state.heapLimitMb === 'number' ? state.heapLimitMb : record.heapLimitMb,
+    fullPageMemoryMb:
+      typeof state.fullPageMemoryMb === 'number' ? state.fullPageMemoryMb : record.fullPageMemoryMb,
+    memorySource: state.memorySource ?? record.memorySource,
+    memoryCapturedAt: state.memoryCapturedAt ?? record.memoryCapturedAt
+  } satisfies MemoryLike;
 }
 
 function canBringTabToFront(record: TabTelemetryRecord, state?: TabState): boolean {
@@ -248,29 +285,33 @@ function DashboardApp(): JSX.Element {
           <p style={{ color: '#555' }}>All clear. Recent activity looks healthy.</p>
         ) : (
           <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'grid', gap: 12 }}>
-            {criticalRecords.map((record) => (
-              <li
-                key={`critical-${record.id ?? `${record.tabId}-${record.timestamp}`}`}
-                style={{
-                  border: '1px solid #f3b8b8',
-                  background: '#fdecea',
-                  padding: 16,
-                  borderRadius: 8
-                }}
-              >
-                <h3 style={{ margin: '0 0 8px 0', fontSize: 16 }}>{record.title}</h3>
-                <p style={{ margin: '0 0 4px 0', wordBreak: 'break-word' }}>{record.url}</p>
-                <p style={{ margin: 0, fontSize: 13 }}>
-                  Peak memory {formatMemoryHeadline(record)} at {formatTime(record.timestamp)}
-                </p>
-                <div style={{ margin: '4px 0 0 0', fontSize: 12, color: '#5f6368' }}>
-                  {memoryMetricLines(record).map((line, index) => (
-                    <div key={`${record.id ?? record.tabId}-critical-${index}`}>{line}</div>
-                  ))}
-                  {formatMemoryDetail(record) && <div>{formatMemoryDetail(record)}</div>}
-                </div>
-              </li>
-            ))}
+            {criticalRecords.map((record) => {
+              const liveState = tabStates[record.tabId];
+              const memorySample = resolveMemorySample(record, liveState);
+              return (
+                <li
+                  key={`critical-${record.id ?? `${record.tabId}-${record.timestamp}`}`}
+                  style={{
+                    border: '1px solid #f3b8b8',
+                    background: '#fdecea',
+                    padding: 16,
+                    borderRadius: 8
+                  }}
+                >
+                  <h3 style={{ margin: '0 0 8px 0', fontSize: 16 }}>{record.title}</h3>
+                  <p style={{ margin: '0 0 4px 0', wordBreak: 'break-word' }}>{record.url}</p>
+                  <p style={{ margin: 0, fontSize: 13 }}>
+                    Peak memory {formatMemoryHeadline(memorySample)} at {formatTime(record.timestamp)}
+                  </p>
+                  <div style={{ margin: '4px 0 0 0', fontSize: 12, color: '#5f6368' }}>
+                    {memoryMetricLines(memorySample).map((line, index) => (
+                      <div key={`${record.id ?? record.tabId}-critical-${index}`}>{line}</div>
+                    ))}
+                    {formatMemoryDetail(memorySample) && <div>{formatMemoryDetail(memorySample)}</div>}
+                  </div>
+                </li>
+              );
+            })}
           </ul>
         )}
       </section>
@@ -290,49 +331,53 @@ function DashboardApp(): JSX.Element {
               </tr>
             </thead>
             <tbody>
-              {records.map((record) => (
-                <tr
-                  key={record.id ?? `${record.tabId}-${record.timestamp}`}
-                  style={{ borderBottom: '1px solid #f0f0f0' }}
-                >
-                  <td style={{ padding: '8px 12px', whiteSpace: 'nowrap' }}>{formatTime(record.timestamp)}</td>
-                  <td style={{ padding: '8px 12px', textTransform: 'capitalize' }}>{record.action}</td>
-                  <td style={{ padding: '8px 12px', textTransform: 'capitalize' }}>{record.reason}</td>
-                  <td style={{ padding: '8px 12px' }}>
-                    {memoryMetricLines(record).map((line, index) => (
-                      <div key={`${record.id ?? record.tabId}-recent-${index}`}>{line}</div>
-                    ))}
-                    {formatMemoryDetail(record) && (
-                      <div style={{ fontSize: 11, color: '#5f6368', marginTop: 4 }}>
-                        {formatMemoryDetail(record)}
-                      </div>
-                    )}
-                  </td>
-                  <td style={{ padding: '8px 12px' }}>{record.title ?? 'Untitled'}</td>
-                  <td style={{ padding: '8px 12px' }}>
-                    {canBringTabToFront(record, tabStates[record.tabId]) ? (
-                      <button
-                        type="button"
-                        onClick={() => handleBringToFront(record)}
-                        disabled={pendingFocusTabId === record.tabId}
-                        style={{
-                          fontSize: 12,
-                          padding: '6px 10px',
-                          borderRadius: 4,
-                          border: '1px solid #1a73e8',
-                          background: pendingFocusTabId === record.tabId ? '#e8f0fe' : '#1a73e8',
-                          color: pendingFocusTabId === record.tabId ? '#1a73e8' : '#fff',
-                          cursor: pendingFocusTabId === record.tabId ? 'not-allowed' : 'pointer'
-                        }}
-                      >
-                        {pendingFocusTabId === record.tabId ? 'Focusing…' : 'Bring to front'}
-                      </button>
-                    ) : (
-                      <span style={{ color: '#8a8a8a' }}>—</span>
-                    )}
-                  </td>
-                </tr>
-              ))}
+              {records.map((record) => {
+                const liveState = tabStates[record.tabId];
+                const memorySample = resolveMemorySample(record, liveState);
+                return (
+                  <tr
+                    key={record.id ?? `${record.tabId}-${record.timestamp}`}
+                    style={{ borderBottom: '1px solid #f0f0f0' }}
+                  >
+                    <td style={{ padding: '8px 12px', whiteSpace: 'nowrap' }}>{formatTime(record.timestamp)}</td>
+                    <td style={{ padding: '8px 12px', textTransform: 'capitalize' }}>{record.action}</td>
+                    <td style={{ padding: '8px 12px', textTransform: 'capitalize' }}>{record.reason}</td>
+                    <td style={{ padding: '8px 12px' }}>
+                      {memoryMetricLines(memorySample).map((line, index) => (
+                        <div key={`${record.id ?? record.tabId}-recent-${index}`}>{line}</div>
+                      ))}
+                      {formatMemoryDetail(memorySample) && (
+                        <div style={{ fontSize: 11, color: '#5f6368', marginTop: 4 }}>
+                          {formatMemoryDetail(memorySample)}
+                        </div>
+                      )}
+                    </td>
+                    <td style={{ padding: '8px 12px' }}>{record.title ?? 'Untitled'}</td>
+                    <td style={{ padding: '8px 12px' }}>
+                      {canBringTabToFront(record, tabStates[record.tabId]) ? (
+                        <button
+                          type="button"
+                          onClick={() => handleBringToFront(record)}
+                          disabled={pendingFocusTabId === record.tabId}
+                          style={{
+                            fontSize: 12,
+                            padding: '6px 10px',
+                            borderRadius: 4,
+                            border: '1px solid #1a73e8',
+                            background: pendingFocusTabId === record.tabId ? '#e8f0fe' : '#1a73e8',
+                            color: pendingFocusTabId === record.tabId ? '#1a73e8' : '#fff',
+                            cursor: pendingFocusTabId === record.tabId ? 'not-allowed' : 'pointer'
+                          }}
+                        >
+                          {pendingFocusTabId === record.tabId ? 'Focusing…' : 'Bring to front'}
+                        </button>
+                      ) : (
+                        <span style={{ color: '#8a8a8a' }}>—</span>
+                      )}
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>
