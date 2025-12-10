@@ -130,7 +130,8 @@ function OptionsApp(): JSX.Element {
           <div style={{ fontWeight: 600 }}>High-memory tab actions</div>
           <div style={{ color: '#5f6368', fontSize: 12 }}>
             Chrome exposes both used and total JS heap sizes. We default to 100 MB of total heap so you can catch
-            runaway growth before it spills into the tab process footprint.
+            runaway growth before it spills into the tab process footprint. In-tab heap probes are approximate,
+            so calibrate against Chrome Task Manager or the processes fallback when you need exact numbers.
           </div>
           <label style={{ display: 'grid', gap: 4 }}>
             <span>When the tab is active</span>

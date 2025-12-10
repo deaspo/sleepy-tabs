@@ -131,6 +131,15 @@ function renderOverlay(payload: ReminderPayload): void {
     metricsContainer.appendChild(metricsList);
     metricsContainer.appendChild(sampleMeta);
 
+    if (payload.memorySource === 'probe') {
+      const probeNote = document.createElement('div');
+      probeNote.style.marginTop = '8px';
+      probeNote.style.color = '#5f6368';
+      probeNote.style.fontSize = '12px';
+      probeNote.textContent = 'In-tab heap probes are approximate; the tab process can consume more memory than shown here.';
+      metricsContainer.appendChild(probeNote);
+    }
+
     if (typeof payload.memoryThresholdMb === 'number') {
       const thresholdMeta = document.createElement('div');
       thresholdMeta.style.marginTop = '8px';

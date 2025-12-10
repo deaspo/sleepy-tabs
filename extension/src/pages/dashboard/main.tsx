@@ -351,6 +351,9 @@ function DashboardApp(): JSX.Element {
                       <div key={`${record.id ?? record.tabId}-critical-${index}`}>{line}</div>
                     ))}
                     {formatMemoryDetail(memorySample) && <div>{formatMemoryDetail(memorySample)}</div>}
+                    {memorySample.memorySource === 'probe' && (
+                      <div>In-tab heap probes are approximate; the tab process can consume more memory than shown here.</div>
+                    )}
                   </div>
                 </li>
               );
@@ -398,6 +401,11 @@ function DashboardApp(): JSX.Element {
                       {formatMemoryDetail(memorySample) && (
                         <div style={{ fontSize: 11, color: '#5f6368', marginTop: 4 }}>
                           {formatMemoryDetail(memorySample)}
+                        </div>
+                      )}
+                      {memorySample.memorySource === 'probe' && (
+                        <div style={{ fontSize: 11, color: '#5f6368', marginTop: 2 }}>
+                          In-tab heap probes are approximate; the tab process can consume more memory than shown here.
                         </div>
                       )}
                     </td>

@@ -171,6 +171,9 @@ function dispatchProbePayload(
       window.setTimeout(() => dispatchProbePayload(payload, attemptsRemaining - 1), SEND_RETRY_DELAY_MS);
       return;
     }
+    if (message.includes('Extension context invalidated')) {
+      return;
+    }
     console.error('Sleepy Tabs: runtime.sendMessage threw', error);
   }
 }

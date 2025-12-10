@@ -113,6 +113,11 @@ function ReminderApp(): JSX.Element {
               ? `Sampled ${new Date(memoryCapturedAt).toLocaleTimeString()} (${memorySource ?? 'unknown source'})`
               : ''}
           </div>
+          {memorySource === 'probe' && (
+            <div style={{ color: '#5f6368', marginTop: 6, fontSize: 12 }}>
+              In-tab heap probes are approximate; the tab process can consume more memory than shown here.
+            </div>
+          )}
           {typeof memoryThresholdMb === 'number' && (
             <div style={{ color: '#5f6368', marginTop: 6, fontSize: 12 }}>
               Configured threshold: {memoryThresholdMb.toFixed(0)} MB{' '}

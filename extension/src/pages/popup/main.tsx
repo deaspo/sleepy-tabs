@@ -262,6 +262,11 @@ function PopupApp(): JSX.Element {
               {`Sampled ${new Date(state.memoryCapturedAt).toLocaleTimeString()} (${state.memorySource ?? 'unknown source'})`}
             </div>
           )}
+          {state.memorySource === 'probe' && (
+            <div style={{ marginTop: 4, color: '#5f6368' }}>
+              In-tab heap probes are approximate; the tab process can consume more memory than shown here.
+            </div>
+          )}
           {state.memorySource === 'processes' && (
             <div style={{ marginTop: 4, color: '#5f6368' }}>
               Using Chrome processes fallback (Task Manager values)
