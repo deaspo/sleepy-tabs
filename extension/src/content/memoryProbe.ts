@@ -138,6 +138,7 @@ async function publishMeasurement(): Promise<void> {
       console.debug('Memory probe skipped: extension context invalidated');
       return;
     }
+    console.error('Sleepy Tabs: memory probe sendMessage threw', error);
     throw error;
   }
 }
