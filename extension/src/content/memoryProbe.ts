@@ -1,8 +1,10 @@
 import { STORAGE_KEYS } from '../shared/constants';
-import type { SleepSettings } from '../shared/types';
+import type { SleepSettings, TabMemoryProbeMessage } from '../shared/types';
 
 const SAMPLE_INTERVAL_MS = 15000;
 const VISIBILITY_SAMPLE_DELAY_MS = 2000;
+const SEND_RETRY_DELAY_MS = 1000;
+const SEND_RETRY_ATTEMPTS = 3;
 
 interface ChromePerformance extends Performance {
   memory?: {
@@ -100,13 +102,12 @@ async function publishMeasurement(): Promise<void> {
     limit: memory.jsHeapSizeLimit
   });
 
-  const runtime = typeof chrome !== 'undefined' ? chrome.runtime : undefined;
-  if (!runtime?.sendMessage) {
+  if (!canDispatchRuntimeMessage()) {
     console.debug('Sleepy Tabs: runtime unavailable, skipping memory probe dispatch.');
     return;
   }
 
-  const payload = {
+  const payload: TabMemoryProbeMessage = {
     type: 'tab-memory-probe' as const,
     memoryUsageMb: bytesToMb(memory.usedJSHeapSize),
     totalHeapMb: bytesToMb(memory.totalJSHeapSize),
@@ -116,18 +117,7 @@ async function publishMeasurement(): Promise<void> {
   };
 
   console.debug('Sleepy Tabs: sending tab-memory-probe payload', payload);
-
-  try {
-    runtime.sendMessage(payload);
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    if (message.includes('Extension context invalidated')) {
-      console.debug('Memory probe skipped: extension context invalidated');
-      return;
-    }
-    console.error('Sleepy Tabs: memory probe sendMessage threw', error);
-    throw error;
-  }
+  dispatchProbePayload(payload);
 }
 
 function scheduleSampling(): void {
@@ -158,4 +148,39 @@ if (window.top === window && document.contentType !== 'application/pdf') {
       void publishMeasurement();
     }
   });
+}
+
+function canDispatchRuntimeMessage(): boolean {
+  return typeof chrome !== 'undefined' && typeof chrome.runtime?.sendMessage === 'function';
+}
+
+function dispatchProbePayload(
+  payload: TabMemoryProbeMessage,
+  attemptsRemaining = SEND_RETRY_ATTEMPTS
+): void {
+  if (!canDispatchRuntimeMessage()) {
+    console.debug('Sleepy Tabs: runtime unavailable, skipping memory probe dispatch.');
+    return;
+  }
+
+  chrome.runtime
+    .sendMessage(payload)
+    .catch((error) => {
+      const message = error instanceof Error ? error.message : String(error);
+      if (message.includes('Extension context invalidated')) {
+        if (attemptsRemaining > 0) {
+          console.debug('Memory probe send deferred; extension context invalidated. Retrying...', {
+            attemptsRemaining
+          });
+          window.setTimeout(() => dispatchProbePayload(payload, attemptsRemaining - 1), SEND_RETRY_DELAY_MS);
+        } else {
+          console.debug('Memory probe skipped after retries: extension context invalidated');
+        }
+        return;
+      }
+      console.error('Sleepy Tabs: memory probe sendMessage threw', error);
+    })
+    .catch((error) => {
+      console.error('Sleepy Tabs: memory probe encountered unexpected rejection', error);
+    });
 }
