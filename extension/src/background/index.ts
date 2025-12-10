@@ -10,6 +10,7 @@ import type {
   NativeHostStatus,
   ReminderDecisionMessage,
   RuntimeMessage,
+  TabState,
   TabStateRequestMessage,
   ToggleIgnoreMessage
 } from '../shared/types';
@@ -21,6 +22,7 @@ const DEBUGGER_PROBE_ALARM = 'sleepy-tabs-debugger-probe';
 const DEBUGGER_PROBE_INTERVAL_MINUTES = 0.5;
 const DEBUGGER_SAMPLE_STALE_MS = 60 * 1000;
 const DEBUGGER_MAX_TABS_PER_RUN = 1;
+const SCRIPT_PROBE_REFRESH_MS = 15000;
 const activeDebuggerSessions = new Set<number>();
 let consentPromptPromise: Promise<void> | null = null;
 let processCapabilityReport: CapabilityReport | null = null;
@@ -232,6 +234,7 @@ async function collectTabMemoryViaScripting(tabId: number): Promise<boolean> {
 
     const sample = (injection?.result ?? null) as ScriptProbeResult | null;
     if (sample) {
+      console.debug('Script memory probe captured sample', { tabId, sample });
       await manager.updateTabMemory(tabId, {
         source: 'probe',
         memoryUsageMb: sample.memoryUsageMb,
@@ -244,6 +247,20 @@ async function collectTabMemoryViaScripting(tabId: number): Promise<boolean> {
     console.debug('Script memory probe failed', { tabId, error });
   }
   return false;
+}
+
+function shouldProbeTabMemory(tabId: number, tabState?: TabState): boolean {
+  if (currentNativeHostStatus === 'connected') {
+    return false;
+  }
+  if (activeDebuggerSessions.has(tabId)) {
+    return false;
+  }
+  if (!tabState) {
+    return true;
+  }
+  const lastCapturedAt = tabState.memoryCapturedAt ?? 0;
+  return Date.now() - lastCapturedAt >= SCRIPT_PROBE_REFRESH_MS;
 }
 
 async function collectTabMemoryViaDebugger(tabId: number): Promise<void> {
@@ -474,7 +491,18 @@ chrome.runtime.onMessage.addListener((message: RuntimeMessage, sender, sendRespo
 
   if (message.type === 'request-tab-state') {
     const request = message as TabStateRequestMessage;
-    void getTabState().then((state) => sendResponse(state[request.tabId] ?? null));
+    void (async () => {
+      let state = await getTabState();
+      let tabState = state[request.tabId];
+      if (shouldProbeTabMemory(request.tabId, tabState)) {
+        const probed = await collectTabMemoryViaScripting(request.tabId);
+        if (probed) {
+          state = await getTabState();
+          tabState = state[request.tabId];
+        }
+      }
+      sendResponse(tabState ?? null);
+    })();
     return true;
   }
 
