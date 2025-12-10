@@ -197,11 +197,20 @@ function PopupApp(): JSX.Element {
     return <div style={{ padding: 16 }}>Loading...</div>;
   }
 
-  const hasMemorySample =
-    (typeof state.memoryUsageMb === 'number' && state.memoryUsageMb > 0) ||
-    (typeof state.totalHeapMb === 'number' && state.totalHeapMb > 0) ||
-    (typeof state.heapLimitMb === 'number' && state.heapLimitMb > 0) ||
-    (typeof state.fullPageMemoryMb === 'number' && state.fullPageMemoryMb > 0);
+  const hasMemorySample = [
+    state.memoryUsageMb,
+    state.totalHeapMb,
+    state.heapLimitMb,
+    state.fullPageMemoryMb
+  ].some((value) => typeof value === 'number' && !Number.isNaN(value));
+
+  const formatMb = (value?: number): string | null => {
+    if (typeof value !== 'number' || Number.isNaN(value)) {
+      return null;
+    }
+    const clamped = Math.max(value, 0);
+    return `${clamped.toFixed(2)} MB`;
+  };
 
   return (
     <div style={{ width: 320, padding: 16, fontFamily: 'system-ui, sans-serif' }}>
@@ -237,22 +246,16 @@ function PopupApp(): JSX.Element {
               </span>
             )}
           </strong>
-          {typeof state.memoryUsageMb === 'number' && state.memoryUsageMb > 0 && (
-            <div>JS heap: {state.memoryUsageMb.toFixed(2)} MB</div>
-          )}
-          {typeof state.fullPageMemoryMb === 'number' && state.fullPageMemoryMb > 0 && (
-            <div>Full page: {state.fullPageMemoryMb.toFixed(2)} MB</div>
-          )}
-          {typeof state.totalHeapMb === 'number' && state.totalHeapMb > 0 && (
+          {formatMb(state.memoryUsageMb) && <div>JS heap: {formatMb(state.memoryUsageMb)}</div>}
+          {formatMb(state.fullPageMemoryMb) && <div>Full page: {formatMb(state.fullPageMemoryMb)}</div>}
+          {formatMb(state.totalHeapMb) && (
             <div>
-              Heap total: {state.totalHeapMb.toFixed(2)} MB
-              {typeof state.heapLimitMb === 'number' && state.heapLimitMb > 0
-                ? ` / ${state.heapLimitMb.toFixed(2)} MB limit`
-                : ''}
+              Heap total: {formatMb(state.totalHeapMb)}
+              {formatMb(state.heapLimitMb) ? ` / ${formatMb(state.heapLimitMb)}` : ''}
             </div>
           )}
-          {(!state.totalHeapMb || state.totalHeapMb <= 0) && typeof state.heapLimitMb === 'number' && state.heapLimitMb > 0 && (
-            <div>Heap limit: {state.heapLimitMb.toFixed(2)} MB</div>
+          {!formatMb(state.totalHeapMb) && formatMb(state.heapLimitMb) && (
+            <div>Heap limit: {formatMb(state.heapLimitMb)}</div>
           )}
           {state.memoryCapturedAt && (
             <div style={{ marginTop: 4, color: '#5f6368' }}>
