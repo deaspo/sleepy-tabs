@@ -530,6 +530,7 @@ chrome.runtime.onMessage.addListener((message: RuntimeMessage, sender, sendRespo
 
   if (message.type === 'tab-memory-probe') {
     if (currentNativeHostStatus === 'connected') {
+      console.debug('Sleepy Tabs: received tab-memory-probe but native host is connected, skipping');
       return false;
     }
     const senderTabId = sender.tab?.id;
