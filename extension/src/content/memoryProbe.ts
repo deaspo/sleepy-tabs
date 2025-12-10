@@ -117,12 +117,6 @@ async function publishMeasurement(): Promise<void> {
 
   console.debug('Sleepy Tabs: sending tab-memory-probe payload', payload);
 
-  if (!runtime.id) {
-    console.debug('Sleepy Tabs: runtime.id missing, skipping memory probe dispatch.');
-    // Happens when the extension was reloaded but the tab still hosts the old content script.
-    return;
-  }
-
   try {
     runtime.sendMessage(payload);
   } catch (error) {
