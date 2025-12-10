@@ -85,6 +85,7 @@ async function measureFullPageMemoryMb(): Promise<number | null> {
 
 async function publishMeasurement(): Promise<void> {
   if (!hasMemoryApi()) {
+    console.debug('Sleepy Tabs: performance.memory missing, skipping sample');
     return;
   }
 
@@ -92,6 +93,12 @@ async function publishMeasurement(): Promise<void> {
   if (!memory) {
     return;
   }
+
+  console.debug('Sleepy Tabs: memory probe raw bytes', {
+    used: memory.usedJSHeapSize,
+    total: memory.totalJSHeapSize,
+    limit: memory.jsHeapSizeLimit
+  });
 
   const runtime = typeof chrome !== 'undefined' ? chrome.runtime : undefined;
   if (!runtime?.sendMessage) {
@@ -104,9 +111,11 @@ async function publishMeasurement(): Promise<void> {
     memoryUsageMb: bytesToMb(memory.usedJSHeapSize),
     totalHeapMb: bytesToMb(memory.totalJSHeapSize),
     heapLimitMb: bytesToMb(memory.jsHeapSizeLimit),
-    fullPageMemoryMb: await measureFullPageMemoryMb() ?? undefined,
+    fullPageMemoryMb: (await measureFullPageMemoryMb()) ?? undefined,
     source: 'probe'
   };
+
+  console.debug('Sleepy Tabs: sending tab-memory-probe payload', payload);
 
   if (!runtime.id) {
     // Happens when the extension was reloaded but the tab still hosts the old content script.
@@ -118,7 +127,9 @@ async function publishMeasurement(): Promise<void> {
       // Swallow errors triggered when the service worker is asleep.
       const error = runtime.lastError;
       if (error) {
-        console.debug('Memory probe message not delivered', error.message);
+        console.debug('Sleepy Tabs: memory probe delivery error', error.message);
+      } else {
+        console.debug('Sleepy Tabs: memory probe delivered');
       }
     });
   } catch (error) {

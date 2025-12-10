@@ -451,6 +451,15 @@ chrome.runtime.onMessage.addListener((message: RuntimeMessage, sender, sendRespo
     }
     const senderTabId = sender.tab?.id;
     if (typeof senderTabId === 'number') {
+      console.debug('Sleepy Tabs: received tab-memory-probe', {
+        tabId: senderTabId,
+        payload: {
+          memoryUsageMb: message.memoryUsageMb,
+          totalHeapMb: message.totalHeapMb,
+          heapLimitMb: message.heapLimitMb,
+          fullPageMemoryMb: message.fullPageMemoryMb
+        }
+      });
       void manager.updateTabMemory(senderTabId, {
         source: 'probe',
         memoryUsageMb: message.memoryUsageMb,
@@ -514,6 +523,14 @@ chrome.runtime.onMessage.addListener((message: RuntimeMessage, sender, sendRespo
   }
 
   return false;
+});
+
+chrome.notifications.onClicked.addListener((notificationId) => {
+  if (notificationId.startsWith('sleepy-tabs-critical')) {
+    void chrome.tabs.create({
+      url: chrome.runtime.getURL('src/pages/dashboard/index.html')
+    });
+  }
 });
 
 chrome.notifications.onClicked.addListener((notificationId) => {
