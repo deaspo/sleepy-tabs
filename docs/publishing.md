@@ -79,3 +79,19 @@ npm run build
 
 For environments that forbid Web Store usage, provide the zipped package alongside manual installation instructions via `chrome://extensions`. Ensure you follow organizational policies before opting for this path.
 
+## Permission Justifications
+
+When completing the Chrome Web Store submission, copy the following explanations into the **Permission justification** fields. Each entry is under the 1,000 character limit and maps directly to `manifest.ts` permissions.
+
+| Permission | Justification |
+| --- | --- |
+| `alarms` | Schedules lightweight timers that re-evaluate tab memory state, trigger reminder countdowns, and run watchdog health checks. No network access or content inspection is performed in these callbacks. |
+| `storage` | Stores the user's configuration (thresholds, automation choices) and the per-tab state cache so reminders and ignores persist across browser sessions. Data stays in `chrome.storage` on the user's device. |
+| `tabs` | Reads basic tab metadata (title, URL, discarded status) and issues sleep/activate commands initiated by the user or reminder flows. It never inspects page content. |
+| `scripting` | Injects the in-tab `memoryProbe` script that reads `performance.memory` metrics so users see approximate heap usage inside the popup and dashboard. The script never captures DOM content. |
+| `sidePanel` | Hosts the dashboard UI inside the Chrome side panel, allowing users to review telemetry without opening a new tab. |
+| `nativeMessaging` | Connects to the optional Sleepy Tabs companion app that users install locally to provide richer Chrome DevTools Protocol (CDP) telemetry. The channel is only opened when the user has installed the helper. |
+| `debugger` | Offers a fallback when native messaging is unavailable by briefly attaching to a tab's CDP target to fetch memory metrics or apply lifecycle sleep commands, matching the extension's core purpose. |
+| `processes` | Checks whether Chrome's processes API can supply per-process memory details; if available, it augments telemetry with aggregate usage to improve automation accuracy. |
+| Host (`<all_urls>`) | Needed so the memory probe and reminder content scripts can run on any site the user opens. The scripts only access runtime performance data and display UI; they never read or transmit page content. |
+
