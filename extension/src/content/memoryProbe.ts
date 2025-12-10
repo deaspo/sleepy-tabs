@@ -1,8 +1,8 @@
 import { STORAGE_KEYS } from '../shared/constants';
 import type { SleepSettings, TabMemoryProbeMessage } from '../shared/types';
 
-const SAMPLE_INTERVAL_MS = 15000;
-const VISIBILITY_SAMPLE_DELAY_MS = 2000;
+const SAMPLE_INTERVAL_MS = 5000;
+const VISIBILITY_SAMPLE_DELAY_MS = 1000;
 const SEND_RETRY_DELAY_MS = 1000;
 const SEND_RETRY_ATTEMPTS = 3;
 

@@ -474,6 +474,7 @@ export class SleepManager {
     const hasSample =
       typeof sample.memoryUsageMb === 'number' ||
       typeof sample.totalHeapMb === 'number' ||
+      typeof sample.heapLimitMb === 'number' ||
       typeof sample.fullPageMemoryMb === 'number';
     if (!hasSample) {
       return;
@@ -759,12 +760,18 @@ export class SleepManager {
     }
     const totalHeap = tabState.totalHeapMb ?? 0;
     const usage = tabState.memoryUsageMb ?? 0;
+    const heapLimit = tabState.heapLimitMb ?? 0;
     const fullPage = tabState.fullPageMemoryMb ?? 0;
-    const maxSample = Math.max(totalHeap, usage, fullPage);
+    const maxSample = Math.max(heapLimit, totalHeap, usage, fullPage);
     if (maxSample > 0) {
       return maxSample;
     }
-    return tabState.totalHeapMb ?? tabState.memoryUsageMb ?? tabState.fullPageMemoryMb;
+    return (
+      tabState.heapLimitMb ??
+      tabState.totalHeapMb ??
+      tabState.memoryUsageMb ??
+      tabState.fullPageMemoryMb
+    );
   }
 
   setProcessFallbackSupport(report: CapabilityReport): void {
@@ -934,7 +941,7 @@ export class SleepManager {
     const preferredMemory =
       typeof memoryUsageMb === 'number'
         ? memoryUsageMb
-        : tabState.totalHeapMb ?? tabState.memoryUsageMb ?? tabState.fullPageMemoryMb;
+        : this.resolveTabMemoryUsage(tabState);
     if (typeof preferredMemory === 'number') {
       reminderUrl.searchParams.set('memoryUsageMb', String(preferredMemory));
     }
