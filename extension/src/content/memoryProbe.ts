@@ -163,10 +163,13 @@ function dispatchProbePayload(
     return;
   }
 
-  chrome.runtime
-    .sendMessage(payload)
-    .catch((error) => {
-      const message = error instanceof Error ? error.message : String(error);
+  try {
+    chrome.runtime.sendMessage(payload, () => {
+      const runtimeError = chrome.runtime.lastError;
+      if (!runtimeError) {
+        return;
+      }
+      const message = runtimeError.message ?? String(runtimeError);
       if (message.includes('Extension context invalidated')) {
         if (attemptsRemaining > 0) {
           console.debug('Memory probe send deferred; extension context invalidated. Retrying...', {
@@ -178,9 +181,17 @@ function dispatchProbePayload(
         }
         return;
       }
-      console.error('Sleepy Tabs: memory probe sendMessage threw', error);
-    })
-    .catch((error) => {
-      console.error('Sleepy Tabs: memory probe encountered unexpected rejection', error);
+      console.error('Sleepy Tabs: memory probe sendMessage error', message);
     });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    if (message.includes('Extension context invalidated') && attemptsRemaining > 0) {
+      console.debug('Memory probe send threw; extension context invalidated. Retrying...', {
+        attemptsRemaining
+      });
+      window.setTimeout(() => dispatchProbePayload(payload, attemptsRemaining - 1), SEND_RETRY_DELAY_MS);
+      return;
+    }
+    console.error('Sleepy Tabs: runtime.sendMessage threw', error);
+  }
 }
