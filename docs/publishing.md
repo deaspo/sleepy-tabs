@@ -43,30 +43,39 @@ npm run build
    - Screenshots (1280x800 recommended) and promotional images.
    - Category and language.
 4. Provide a link to your privacy policy and contact email.
-5. Set visibility to **Private** or **Unlisted**:
+5. In the **Additional fields** panel supply the hosted URLs:
+   - **Official URL / Homepage URL**: <https://deaspo.github.io/sleepy-tabs/>
+   - **Support URL**: <https://deaspo.github.io/sleepy-tabs/support/>
+   These pages live in `docs/index.md` and `docs/support.md` and are published automatically via GitHub Pages. Update the markdown if you need to customize messaging before each release.
+6. Set visibility to **Private** or **Unlisted**:
    - **Private** allows access only to users (or domains) you specify.
    - **Unlisted** is discoverable only via direct link.
-6. Declare data usage; indicate that telemetry stays on-device unless you add cloud logging.
+7. Declare data usage; indicate that telemetry stays on-device unless you add cloud logging.
 
 ## 6. Configure Access (Private Listing)
+
 - For private availability, specify Google accounts or an entire Google Workspace domain.
 - Confirm your team members use those accounts to sign into Chrome.
 
 ## 7. Submit for Review
+
 - Click **Publish**. Even private listings undergo automated review and may take several hours.
 - Monitor the dashboard for approval status or required fixes.
 
 ## 8. Post-Publish Checklist
+
 - Share the Web Store link with approved users.
 - Tag the Git repository release (optional) and update documentation references.
 - Maintain version parity: bump `manifest.version` and the workspace package versions on subsequent releases.
 - Retest installation from the Chrome Web Store package to ensure production behavior matches local builds.
 
 ## 9. Handling Updates
+
 - Increment the `version` in `manifest.ts` (major.minor.patch).
 - Rebuild and upload a new zip via the developer console.
 - Submit the update; Chrome Web Store pushes updates automatically to enrolled users.
 
 ## 10. Distribution Outside the Store
+
 For environments that forbid Web Store usage, provide the zipped package alongside manual installation instructions via `chrome://extensions`. Ensure you follow organizational policies before opting for this path.
 
