@@ -209,6 +209,10 @@ export interface CapabilitiesRequestMessage {
   type: 'request-capabilities';
 }
 
+export interface PingMessage {
+  type: 'ping';
+}
+
 export type RuntimeMessage =
   | SettingsUpdateMessage
   | SettingsRequestMessage
@@ -225,4 +229,5 @@ export type RuntimeMessage =
   | SleepAllTabsMessage
   | NativeHostStatusMessage
   | TabMemoryProbeMessage
-  | CapabilitiesRequestMessage;
+  | CapabilitiesRequestMessage
+  | PingMessage;

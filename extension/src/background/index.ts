@@ -401,6 +401,10 @@ chrome.tabs.onRemoved.addListener((tabId) => {
 });
 
 chrome.runtime.onMessage.addListener((message: RuntimeMessage, sender, sendResponse) => {
+  if (message.type === 'ping') {
+    sendResponse({ ok: true });
+    return true;
+  }
   if (message.type === 'request-settings') {
     void getSettings().then((settings) => sendResponse(settings));
     return true;

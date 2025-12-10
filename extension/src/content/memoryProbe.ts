@@ -123,15 +123,7 @@ async function publishMeasurement(): Promise<void> {
   }
 
   try {
-    runtime.sendMessage(payload, () => {
-      // Swallow errors triggered when the service worker is asleep.
-      const error = runtime.lastError;
-      if (error) {
-        console.debug('Sleepy Tabs: memory probe delivery error', error.message);
-      } else {
-        console.debug('Sleepy Tabs: memory probe delivered');
-      }
-    });
+    runtime.sendMessage(payload);
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     if (message.includes('Extension context invalidated')) {
