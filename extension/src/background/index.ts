@@ -234,7 +234,6 @@ async function collectTabMemoryViaScripting(tabId: number): Promise<boolean> {
 
     const sample = (injection?.result ?? null) as ScriptProbeResult | null;
     if (sample) {
-      console.debug('Script memory probe captured sample', { tabId, sample });
       await manager.updateTabMemory(tabId, {
         source: 'probe',
         memoryUsageMb: sample.memoryUsageMb,
@@ -244,7 +243,7 @@ async function collectTabMemoryViaScripting(tabId: number): Promise<boolean> {
       return true;
     }
   } catch (error) {
-    console.debug('Script memory probe failed', { tabId, error });
+    void error;
   }
   return false;
 }
@@ -529,20 +528,8 @@ chrome.runtime.onMessage.addListener((message: RuntimeMessage, sender, sendRespo
   }
 
   if (message.type === 'tab-memory-probe') {
-    if (currentNativeHostStatus === 'connected') {
-      console.debug('Sleepy Tabs: received tab-memory-probe while companion connected; treating as supplemental sample');
-    }
     const senderTabId = sender.tab?.id;
     if (typeof senderTabId === 'number') {
-      console.debug('Sleepy Tabs: received tab-memory-probe', {
-        tabId: senderTabId,
-        payload: {
-          memoryUsageMb: message.memoryUsageMb,
-          totalHeapMb: message.totalHeapMb,
-          heapLimitMb: message.heapLimitMb,
-          fullPageMemoryMb: message.fullPageMemoryMb
-        }
-      });
       void manager.updateTabMemory(senderTabId, {
         source: 'probe',
         memoryUsageMb: message.memoryUsageMb,

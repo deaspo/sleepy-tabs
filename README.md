@@ -5,7 +5,7 @@ Sleepy Tabs Guardian is a Manifest V3 Chrome/Chromium extension that automatical
 ## Features
 
 - Auto-sleep inactive tabs after a configurable timeout (default 5 minutes) with per-tab override switches.
-- Auto-manage high-memory tabs with per-state actions (default JS heap threshold 250 MB, reminder for active tabs, sleep for inactive) using CDP lifecycle commands.
+- Auto-manage high-memory tabs with per-state actions (default total heap threshold 100 MB, reminder for active tabs, sleep for inactive) using CDP lifecycle commands.
 - IndexedDB-powered telemetry log with dashboard highlighting critical pages and recent actions.
 - Consent workflow plus in-page reminders with countdowns that auto-accept actions if the user is away.
 - Options page for thresholds, reminder timers, and automation toggles.

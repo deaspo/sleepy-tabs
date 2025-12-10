@@ -11,7 +11,7 @@ Introducing Sleepy Tabs Guardian -- a Chrome/Chromium extension that keeps your 
 ## What we built
 
 - Auto-sleeps inactive tabs after 5 minutes (configurable) with a reminder modal and manual override.
-- Manages high-memory tabs with a JS heap threshold tuned to in-tab probes (250 MB default) and separate actions for active vs inactive pages.
+- Manages high-memory tabs with a total heap threshold tuned to in-tab probes (100 MB default) and separate actions for active vs inactive pages.
 - One-click "Sleep all tabs" control that clears the decks instantly without opening every tab.
 - IndexedDB-backed dashboard that highlights critical tabs, recent actions, and resource trends.
 - Consent-first onboarding plus per-tab ignore toggles for sensitive workloads.

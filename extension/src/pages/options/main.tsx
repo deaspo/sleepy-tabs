@@ -129,8 +129,8 @@ function OptionsApp(): JSX.Element {
         >
           <div style={{ fontWeight: 600 }}>High-memory tab actions</div>
           <div style={{ color: '#5f6368', fontSize: 12 }}>
-            In-tab JS heap probes usually report 20–50% of the task manager footprint, so the defaults here aim to
-            compensate for that gap.
+            Chrome exposes both used and total JS heap sizes. We default to 100 MB of total heap so you can catch
+            runaway growth before it spills into the tab process footprint.
           </div>
           <label style={{ display: 'grid', gap: 4 }}>
             <span>When the tab is active</span>

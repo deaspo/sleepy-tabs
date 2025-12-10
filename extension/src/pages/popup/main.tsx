@@ -246,14 +246,14 @@ function PopupApp(): JSX.Element {
               </span>
             )}
           </strong>
-          {formatMb(state.memoryUsageMb) && <div>JS heap: {formatMb(state.memoryUsageMb)}</div>}
-          {formatMb(state.fullPageMemoryMb) && <div>Full page: {formatMb(state.fullPageMemoryMb)}</div>}
           {formatMb(state.totalHeapMb) && (
             <div>
               Heap total: {formatMb(state.totalHeapMb)}
               {formatMb(state.heapLimitMb) ? ` / ${formatMb(state.heapLimitMb)}` : ''}
             </div>
           )}
+          {formatMb(state.memoryUsageMb) && <div>JS heap used: {formatMb(state.memoryUsageMb)}</div>}
+          {formatMb(state.fullPageMemoryMb) && <div>Full page: {formatMb(state.fullPageMemoryMb)}</div>}
           {!formatMb(state.totalHeapMb) && formatMb(state.heapLimitMb) && (
             <div>Heap limit: {formatMb(state.heapLimitMb)}</div>
           )}

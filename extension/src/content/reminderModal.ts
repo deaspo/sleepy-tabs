@@ -67,11 +67,13 @@ function renderOverlay(payload: ReminderPayload): void {
   info.style.lineHeight = '1.5';
   let metricsContainer: HTMLDivElement | null = null;
   if (payload.reason === 'memory') {
-    const heapText =
-      typeof payload.memoryUsageMb === 'number'
-        ? `${payload.memoryUsageMb.toFixed(2)} MB`
-        : 'unknown';
-    info.textContent = `This tab looks heavy. Latest memory snapshot:`;
+    const decisionValue =
+      typeof payload.totalHeapMb === 'number'
+        ? `${payload.totalHeapMb.toFixed(2)} MB`
+        : typeof payload.memoryUsageMb === 'number'
+          ? `${payload.memoryUsageMb.toFixed(2)} MB`
+          : 'unknown';
+    info.textContent = `This tab looks heavy. Latest heap snapshot: ${decisionValue}`;
 
     metricsContainer = document.createElement('div');
     metricsContainer.style.fontSize = '13px';
@@ -86,16 +88,6 @@ function renderOverlay(payload: ReminderPayload): void {
     metricsList.style.padding = '0';
     metricsList.style.margin = '8px 0 0';
 
-    const heapItem = document.createElement('li');
-    heapItem.textContent = `JS heap: ${heapText}`;
-    metricsList.appendChild(heapItem);
-
-    if (typeof payload.fullPageMemoryMb === 'number') {
-      const fullPageItem = document.createElement('li');
-      fullPageItem.textContent = `Full page: ${payload.fullPageMemoryMb.toFixed(2)} MB`;
-      metricsList.appendChild(fullPageItem);
-    }
-
     if (typeof payload.totalHeapMb === 'number') {
       const totalHeapItem = document.createElement('li');
       const limitSuffix =
@@ -104,7 +96,21 @@ function renderOverlay(payload: ReminderPayload): void {
           : '';
       totalHeapItem.textContent = `Heap total: ${payload.totalHeapMb.toFixed(2)} MB${limitSuffix}`;
       metricsList.appendChild(totalHeapItem);
-    } else if (typeof payload.heapLimitMb === 'number') {
+    }
+
+    if (typeof payload.memoryUsageMb === 'number') {
+      const heapItem = document.createElement('li');
+      heapItem.textContent = `JS heap used: ${payload.memoryUsageMb.toFixed(2)} MB`;
+      metricsList.appendChild(heapItem);
+    }
+
+    if (typeof payload.fullPageMemoryMb === 'number') {
+      const fullPageItem = document.createElement('li');
+      fullPageItem.textContent = `Full page: ${payload.fullPageMemoryMb.toFixed(2)} MB`;
+      metricsList.appendChild(fullPageItem);
+    }
+
+    if (typeof payload.totalHeapMb !== 'number' && typeof payload.heapLimitMb === 'number') {
       const limitOnlyItem = document.createElement('li');
       limitOnlyItem.textContent = `Heap limit: ${payload.heapLimitMb.toFixed(2)} MB`;
       metricsList.appendChild(limitOnlyItem);

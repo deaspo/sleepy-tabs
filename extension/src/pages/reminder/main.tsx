@@ -90,16 +90,16 @@ function ReminderApp(): JSX.Element {
       </h1>
       {reason === 'memory' ? (
         <div style={{ fontSize: 14, color: '#202124', marginBottom: 12 }}>
-          <p style={{ margin: '0 0 4px 0' }}>Latest memory snapshot:</p>
+          <p style={{ margin: '0 0 4px 0' }}>Latest heap snapshot:</p>
           <ul style={{ listStyle: 'none', padding: 0, margin: 0 }}>
-            {typeof memoryUsageMb === 'number' && (
-              <li>JS heap: {memoryUsageMb.toFixed(2)} MB</li>
-            )}
             {typeof totalHeapMb === 'number' && (
               <li>
                 Heap total: {totalHeapMb.toFixed(2)} MB
                 {typeof heapLimitMb === 'number' ? ` / ${heapLimitMb.toFixed(2)} MB limit` : ''}
               </li>
+            )}
+            {typeof memoryUsageMb === 'number' && (
+              <li>JS heap used: {memoryUsageMb.toFixed(2)} MB</li>
             )}
             {typeof fullPageMemoryMb === 'number' && (
               <li>Full page: {fullPageMemoryMb.toFixed(2)} MB</li>

@@ -467,13 +467,14 @@ export class SleepManager {
       ) {
         return;
       }
-      console.debug('Telemetry broadcast failed', error);
     });
   }
 
   async updateTabMemory(tabId: number, sample: TabMemorySample): Promise<void> {
     const hasSample =
-      typeof sample.memoryUsageMb === 'number' || typeof sample.fullPageMemoryMb === 'number';
+      typeof sample.memoryUsageMb === 'number' ||
+      typeof sample.totalHeapMb === 'number' ||
+      typeof sample.fullPageMemoryMb === 'number';
     if (!hasSample) {
       return;
     }
@@ -653,8 +654,7 @@ export class SleepManager {
         }
         resolve(info);
       });
-    }).catch((error) => {
-      console.debug('Process fallback sampling failed', error);
+    }).catch(() => {
       return null;
     });
 
@@ -757,13 +757,14 @@ export class SleepManager {
     if (!tabState) {
       return undefined;
     }
+    const totalHeap = tabState.totalHeapMb ?? 0;
     const usage = tabState.memoryUsageMb ?? 0;
     const fullPage = tabState.fullPageMemoryMb ?? 0;
-    const maxSample = Math.max(usage, fullPage);
+    const maxSample = Math.max(totalHeap, usage, fullPage);
     if (maxSample > 0) {
       return maxSample;
     }
-    return tabState.memoryUsageMb ?? tabState.fullPageMemoryMb;
+    return tabState.totalHeapMb ?? tabState.memoryUsageMb ?? tabState.fullPageMemoryMb;
   }
 
   setProcessFallbackSupport(report: CapabilityReport): void {
@@ -827,7 +828,7 @@ export class SleepManager {
       try {
         await chrome.windows.remove(existingWindowId);
       } catch (error) {
-        console.debug('Failed to close existing reminder window', error);
+        void error;
       }
       this.activeReminderWindows.delete(tabId);
     }
@@ -933,7 +934,7 @@ export class SleepManager {
     const preferredMemory =
       typeof memoryUsageMb === 'number'
         ? memoryUsageMb
-        : tabState.memoryUsageMb ?? tabState.fullPageMemoryMb;
+        : tabState.totalHeapMb ?? tabState.memoryUsageMb ?? tabState.fullPageMemoryMb;
     if (typeof preferredMemory === 'number') {
       reminderUrl.searchParams.set('memoryUsageMb', String(preferredMemory));
     }

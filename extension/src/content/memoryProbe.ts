@@ -77,17 +77,13 @@ async function measureFullPageMemoryMb(): Promise<number | null> {
       return bytesToMb((result as { bytes: number }).bytes);
     }
   } catch (error) {
-    const name = error instanceof Error ? error.name : undefined;
-    if (name !== 'SecurityError') {
-      console.debug('measureUserAgentSpecificMemory failed', error);
-    }
+    void error;
   }
   return null;
 }
 
 async function publishMeasurement(): Promise<void> {
   if (!hasMemoryApi()) {
-    console.debug('Sleepy Tabs: performance.memory missing, skipping sample');
     return;
   }
 
@@ -96,14 +92,7 @@ async function publishMeasurement(): Promise<void> {
     return;
   }
 
-  console.debug('Sleepy Tabs: memory probe raw bytes', {
-    used: memory.usedJSHeapSize,
-    total: memory.totalJSHeapSize,
-    limit: memory.jsHeapSizeLimit
-  });
-
   if (!canDispatchRuntimeMessage()) {
-    console.debug('Sleepy Tabs: runtime unavailable, skipping memory probe dispatch.');
     return;
   }
 
@@ -116,7 +105,6 @@ async function publishMeasurement(): Promise<void> {
     source: 'probe'
   };
 
-  console.debug('Sleepy Tabs: sending tab-memory-probe payload', payload);
   dispatchProbePayload(payload);
 }
 
@@ -159,7 +147,6 @@ function dispatchProbePayload(
   attemptsRemaining = SEND_RETRY_ATTEMPTS
 ): void {
   if (!canDispatchRuntimeMessage()) {
-    console.debug('Sleepy Tabs: runtime unavailable, skipping memory probe dispatch.');
     return;
   }
 
@@ -172,12 +159,7 @@ function dispatchProbePayload(
       const message = runtimeError.message ?? String(runtimeError);
       if (message.includes('Extension context invalidated')) {
         if (attemptsRemaining > 0) {
-          console.debug('Memory probe send deferred; extension context invalidated. Retrying...', {
-            attemptsRemaining
-          });
           window.setTimeout(() => dispatchProbePayload(payload, attemptsRemaining - 1), SEND_RETRY_DELAY_MS);
-        } else {
-          console.debug('Memory probe skipped after retries: extension context invalidated');
         }
         return;
       }
@@ -186,9 +168,6 @@ function dispatchProbePayload(
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     if (message.includes('Extension context invalidated') && attemptsRemaining > 0) {
-      console.debug('Memory probe send threw; extension context invalidated. Retrying...', {
-        attemptsRemaining
-      });
       window.setTimeout(() => dispatchProbePayload(payload, attemptsRemaining - 1), SEND_RETRY_DELAY_MS);
       return;
     }

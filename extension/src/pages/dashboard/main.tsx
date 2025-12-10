@@ -37,7 +37,7 @@ function describeMemorySource(source?: TabTelemetryRecord['memorySource']): stri
     case 'debugger':
       return 'Chrome debugger sampler';
     case 'probe':
-      return 'In-tab JS heap probe';
+      return 'In-tab heap probe';
     case 'processes':
       return 'Chrome processes API';
     default:
@@ -53,23 +53,28 @@ function formatMemoryDetail(sample: MemoryLike): string {
 
 function formatMemoryHeadline(sample: MemoryLike): string {
   const preferred =
-    typeof sample.fullPageMemoryMb === 'number' ? sample.fullPageMemoryMb : sample.memoryUsageMb;
+    typeof sample.totalHeapMb === 'number'
+      ? sample.totalHeapMb
+      : typeof sample.fullPageMemoryMb === 'number'
+        ? sample.fullPageMemoryMb
+        : sample.memoryUsageMb;
   return typeof preferred === 'number' ? `${preferred.toFixed(2)} MB` : 'unknown';
 }
 
 function memoryMetricLines(sample: MemoryLike): string[] {
   const lines: string[] = [];
-  if (typeof sample.memoryUsageMb === 'number') {
-    lines.push(`JS heap: ${sample.memoryUsageMb.toFixed(2)} MB`);
-  }
-  if (typeof sample.fullPageMemoryMb === 'number') {
-    lines.push(`Full page: ${sample.fullPageMemoryMb.toFixed(2)} MB`);
-  }
   if (typeof sample.totalHeapMb === 'number') {
     const limitSuffix =
       typeof sample.heapLimitMb === 'number' ? ` / ${sample.heapLimitMb.toFixed(2)} MB limit` : '';
     lines.push(`Heap total: ${sample.totalHeapMb.toFixed(2)} MB${limitSuffix}`);
-  } else if (typeof sample.heapLimitMb === 'number') {
+  }
+  if (typeof sample.memoryUsageMb === 'number') {
+    lines.push(`JS heap used: ${sample.memoryUsageMb.toFixed(2)} MB`);
+  }
+  if (typeof sample.fullPageMemoryMb === 'number') {
+    lines.push(`Full page: ${sample.fullPageMemoryMb.toFixed(2)} MB`);
+  }
+  if (typeof sample.totalHeapMb !== 'number' && typeof sample.heapLimitMb === 'number') {
     lines.push(`Heap limit: ${sample.heapLimitMb.toFixed(2)} MB`);
   }
   return lines;
