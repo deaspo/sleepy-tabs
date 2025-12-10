@@ -253,9 +253,16 @@ export class SleepManager {
     heapLimitMb?: number
   ): Promise<void> {
     const state = await getTabState();
-    const tabState = state[tabId];
+    let tabState = state[tabId];
     if (!tabState) {
-      return;
+      const tab = await chrome.tabs.get(tabId).catch(() => null);
+      const now = Date.now();
+      tabState = this.composeTabState(tabId, now, undefined, {
+        url: tab?.url ?? undefined,
+        title: tab?.title ?? 'Unknown tab',
+        windowId: tab?.windowId
+      });
+      state[tabId] = tabState;
     }
     delete tabState.pendingReminder;
     await setTabState(state);
