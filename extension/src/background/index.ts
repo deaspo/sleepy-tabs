@@ -26,6 +26,12 @@ let consentPromptPromise: Promise<void> | null = null;
 let processCapabilityReport: CapabilityReport | null = null;
 let processCapabilityPromise: Promise<CapabilityReport> | null = null;
 
+interface ScriptProbeResult {
+  memoryUsageMb: number;
+  totalHeapMb: number;
+  heapLimitMb: number;
+}
+
 interface PerformanceMetricsResponse {
   metrics?: Array<{ name: string; value: number }>;
 }
@@ -191,8 +197,53 @@ async function pollDebuggerTelemetry(): Promise<void> {
   }
 
   for (const tabId of candidates) {
+    const scriptingSuccess = await collectTabMemoryViaScripting(tabId);
+    if (scriptingSuccess) {
+      continue;
+    }
     await collectTabMemoryViaDebugger(tabId);
   }
+}
+
+async function collectTabMemoryViaScripting(tabId: number): Promise<boolean> {
+  try {
+    const [injection] = await chrome.scripting.executeScript({
+      target: { tabId },
+      func: () => {
+        const perf = performance as Performance & {
+          memory?: {
+            usedJSHeapSize: number;
+            totalJSHeapSize: number;
+            jsHeapSizeLimit: number;
+          };
+        };
+        if (!('memory' in perf) || !perf.memory) {
+          return null;
+        }
+        const bytesToMb = (bytes: number): number => Math.round((bytes / 1048576) * 100) / 100;
+        const { usedJSHeapSize, totalJSHeapSize, jsHeapSizeLimit } = perf.memory;
+        return {
+          memoryUsageMb: bytesToMb(usedJSHeapSize),
+          totalHeapMb: bytesToMb(totalJSHeapSize),
+          heapLimitMb: bytesToMb(jsHeapSizeLimit)
+        };
+      }
+    });
+
+    const sample = (injection?.result ?? null) as ScriptProbeResult | null;
+    if (sample) {
+      await manager.updateTabMemory(tabId, {
+        source: 'probe',
+        memoryUsageMb: sample.memoryUsageMb,
+        totalHeapMb: sample.totalHeapMb,
+        heapLimitMb: sample.heapLimitMb
+      });
+      return true;
+    }
+  } catch (error) {
+    console.debug('Script memory probe failed', { tabId, error });
+  }
+  return false;
 }
 
 async function collectTabMemoryViaDebugger(tabId: number): Promise<void> {
