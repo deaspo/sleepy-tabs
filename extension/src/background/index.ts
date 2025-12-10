@@ -613,19 +613,3 @@ chrome.runtime.onMessage.addListener((message: RuntimeMessage, sender, sendRespo
 
   return false;
 });
-
-chrome.notifications.onClicked.addListener((notificationId) => {
-  if (notificationId.startsWith('sleepy-tabs-critical')) {
-    void chrome.tabs.create({
-      url: chrome.runtime.getURL('src/pages/dashboard/index.html')
-    });
-  }
-});
-
-chrome.notifications.onClicked.addListener((notificationId) => {
-  if (notificationId.startsWith('sleepy-tabs-critical')) {
-    void chrome.tabs.create({
-      url: chrome.runtime.getURL('src/pages/dashboard/index.html')
-    });
-  }
-});
