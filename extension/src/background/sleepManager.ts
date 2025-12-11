@@ -27,6 +27,7 @@ export const WATCHDOG_ALARM = 'sleepy-tabs-watchdog';
 const SETTINGS_POLL_SECONDS = 30;
 const PROCESS_FALLBACK_INTERVAL_MS = 20000;
 const PROCESS_SAMPLE_REFRESH_MS = 60000;
+const SESSION_RESUME_RESET_THRESHOLD_MS = 60 * 1000;
 
 interface SleepAllResult {
   attempted: number;
@@ -83,14 +84,24 @@ export class SleepManager {
         continue;
       }
       const existing = state[tab.id];
-      const lastActiveAt = existing?.lastActiveAt ?? now;
-      state[tab.id] = this.composeTabState(tab.id, now, existing, {
-        lastActiveAt,
+      const lastSeenAt = existing?.lastSeenAt ?? 0;
+      const resumeGap = lastSeenAt > 0 ? now - lastSeenAt : Number.POSITIVE_INFINITY;
+      const resumedFromPriorSession = Boolean(existing) && resumeGap > SESSION_RESUME_RESET_THRESHOLD_MS;
+
+      const overrides: Partial<TabState> = {
+        lastActiveAt: resumedFromPriorSession ? now : existing?.lastActiveAt ?? now,
         lastSeenAt: now,
         url: tab.url ?? existing?.url,
         title: tab.title ?? existing?.title,
         windowId: tab.windowId ?? existing?.windowId
-      });
+      };
+
+      if (resumedFromPriorSession) {
+        // Edge restores tabs eagerly on startup; treat them as freshly active to avoid instant reminders.
+        overrides.pendingReminder = undefined;
+      }
+
+      state[tab.id] = this.composeTabState(tab.id, now, existing, overrides);
       postToCompanion({ type: 'track-tab', tabId: tab.id, url: tab.url ?? undefined });
     }
     await setTabState(state);
