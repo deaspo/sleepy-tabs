@@ -758,20 +758,15 @@ export class SleepManager {
     if (!tabState) {
       return undefined;
     }
-    const totalHeap = tabState.totalHeapMb ?? 0;
-    const usage = tabState.memoryUsageMb ?? 0;
-    const heapLimit = tabState.heapLimitMb ?? 0;
-    const fullPage = tabState.fullPageMemoryMb ?? 0;
-    const maxSample = Math.max(heapLimit, totalHeap, usage, fullPage);
-    if (maxSample > 0) {
-      return maxSample;
+    const candidates = [
+      tabState.totalHeapMb,
+      tabState.fullPageMemoryMb,
+      tabState.memoryUsageMb
+    ].filter((value): value is number => typeof value === 'number' && value > 0);
+    if (candidates.length > 0) {
+      return Math.max(...candidates);
     }
-    return (
-      tabState.heapLimitMb ??
-      tabState.totalHeapMb ??
-      tabState.memoryUsageMb ??
-      tabState.fullPageMemoryMb
-    );
+    return tabState.heapLimitMb ?? tabState.memoryUsageMb ?? tabState.totalHeapMb ?? undefined;
   }
 
   setProcessFallbackSupport(report: CapabilityReport): void {
