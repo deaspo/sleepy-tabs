@@ -10,8 +10,8 @@ import type {
 } from '../../shared/types';
 
 const TAB_STATE_STALE_MS = 5 * 60 * 1000;
-const MAX_VISIBLE_CRITICAL_ITEMS = 5;
-const MAX_VISIBLE_RECENT_ACTION_ROWS = 5;
+const MAX_VISIBLE_CRITICAL_ITEMS = 3;
+const MAX_VISIBLE_RECENT_ACTION_ROWS = 3;
 
 function formatTime(value: number): string {
   const date = new Date(value);
@@ -546,7 +546,17 @@ function DashboardApp(): JSX.Element {
                   }}
                 >
                   <h3 style={{ margin: '0 0 8px 0', fontSize: 16 }}>{record.title}</h3>
-                  <p style={{ margin: '0 0 4px 0', wordBreak: 'break-word' }}>{record.url}</p>
+                  <p
+                    style={{
+                      margin: '0 0 4px 0',
+                      display: 'block',
+                      overflow: 'hidden',
+                      textOverflow: 'ellipsis',
+                      whiteSpace: 'nowrap'
+                    }}
+                  >
+                    {record.url}
+                  </p>
                   <p style={{ margin: 0, fontSize: 13 }}>
                     Peak memory {formatMemoryHeadline(memorySample)} at {formatTime(record.timestamp)}
                   </p>
@@ -556,9 +566,9 @@ function DashboardApp(): JSX.Element {
                       <div key={`${record.id ?? record.tabId}-critical-${index}`}>{line}</div>
                     ))}
                     {formatMemoryDetail(memorySample) && <div>{formatMemoryDetail(memorySample)}</div>}
-                    {memorySample.memorySource === 'probe' && (
+                    {/* {memorySample.memorySource === 'probe' && (
                       <div>In-tab heap probes are approximate; the tab process can consume more memory than shown here.</div>
-                    )}
+                    )} */}
                     {memoryTrigger && (
                         <div style={{ fontSize: 11, color: '#5f6368', marginTop: 4 }}>{memoryTrigger}</div>
                       )}
@@ -630,11 +640,11 @@ function DashboardApp(): JSX.Element {
                           {formatMemoryDetail(memorySample)}
                         </div>
                       )}
-                      {memorySample.memorySource === 'probe' && (
+                      {/* {memorySample.memorySource === 'probe' && (
                         <div style={{ fontSize: 11, color: '#5f6368', marginTop: 2 }}>
                           In-tab heap probes are approximate; the tab process can consume more memory than shown here.
                         </div>
-                      )}
+                      )} */}
                       {memoryNotes && (
                         <div style={{ fontSize: 11, color: '#d93025', marginTop: 6 }}>{memoryNotes}</div>
                       )}
