@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import ReactDOM from 'react-dom/client';
 
 import { focusTab, requestTabStates, requestTelemetry } from '../../shared/messaging';
@@ -10,6 +10,8 @@ import type {
 } from '../../shared/types';
 
 const TAB_STATE_STALE_MS = 5 * 60 * 1000;
+const MAX_VISIBLE_CRITICAL_ITEMS = 5;
+const MAX_VISIBLE_RECENT_ACTION_ROWS = 5;
 
 function formatTime(value: number): string {
   const date = new Date(value);
@@ -162,6 +164,14 @@ function DashboardApp(): JSX.Element {
   const [tabStates, setTabStates] = useState<Record<number, TabState>>({});
   const [focusToast, setFocusToast] = useState<{ tone: 'success' | 'error'; message: string } | null>(null);
   const [pendingFocusTabId, setPendingFocusTabId] = useState<number | null>(null);
+  const [criticalListMaxHeight, setCriticalListMaxHeight] = useState<number | null>(null);
+  const [recentActionsMaxHeight, setRecentActionsMaxHeight] = useState<number | null>(null);
+  const [layoutVersion, setLayoutVersion] = useState(0);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [actionFilter, setActionFilter] = useState<'all' | TabTelemetryRecord['action']>('all');
+  const [reasonFilter, setReasonFilter] = useState<'all' | string>('all');
+  const criticalListRef = useRef<HTMLUListElement | null>(null);
+  const recentActionsRef = useRef<HTMLDivElement | null>(null);
   const migrationToastRef = useRef('');
 
   useEffect(() => {
@@ -250,6 +260,12 @@ function DashboardApp(): JSX.Element {
     return () => window.clearTimeout(timeout);
   }, [focusToast]);
 
+  useEffect(() => {
+    const handleResize = () => setLayoutVersion((value) => value + 1);
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
+
   const handleBringToFront = useCallback(
     async (record: TabTelemetryRecord) => {
       const tabState = tabStates[record.tabId];
@@ -272,10 +288,86 @@ function DashboardApp(): JSX.Element {
     [tabStates]
   );
 
+  const availableActions = useMemo(() => {
+    const actions = new Set<TabTelemetryRecord['action']>();
+    records.forEach((record) => actions.add(record.action));
+    return Array.from(actions).sort((a, b) => a.localeCompare(b));
+  }, [records]);
+
+  const availableReasons = useMemo(() => {
+    const reasons = new Set<string>();
+    records.forEach((record) => reasons.add(formatReasonLabel(record)));
+    return Array.from(reasons).sort((a, b) => a.localeCompare(b));
+  }, [records]);
+
+  const filteredRecords = useMemo<TabTelemetryRecord[]>(() => {
+    const normalizedTerm = searchTerm.trim().toLowerCase();
+    return records.filter((record) => {
+      if (actionFilter !== 'all' && record.action !== actionFilter) {
+        return false;
+      }
+      const reasonLabel = formatReasonLabel(record);
+      if (reasonFilter !== 'all' && reasonLabel !== reasonFilter) {
+        return false;
+      }
+      if (!normalizedTerm) {
+        return true;
+      }
+      const haystack = [
+        record.title ?? '',
+        record.url ?? '',
+        record.action ?? '',
+        reasonLabel,
+        record.memorySampleNotes ?? ''
+      ];
+      return haystack.some((value) => value.toLowerCase().includes(normalizedTerm));
+    });
+  }, [records, actionFilter, reasonFilter, searchTerm]);
+
   const criticalRecords = useMemo(
-    () => records.filter((record) => record.critical).slice(0, 10),
-    [records]
+    () => filteredRecords.filter((record) => record.critical),
+    [filteredRecords]
   );
+
+  useLayoutEffect(() => {
+    const listElement = criticalListRef.current;
+    if (listElement) {
+      const items = Array.from(listElement.children) as HTMLElement[];
+      if (items.length > MAX_VISIBLE_CRITICAL_ITEMS) {
+        const visibleItems = items.slice(0, MAX_VISIBLE_CRITICAL_ITEMS);
+        const totalHeight = visibleItems.reduce((sum, item) => sum + item.getBoundingClientRect().height, 0);
+        const computedStyle = window.getComputedStyle(listElement);
+        const gapValue = Number.parseFloat(computedStyle.rowGap || computedStyle.gap || '0') || 0;
+        const newHeight = Math.ceil(totalHeight + gapValue * (visibleItems.length - 1));
+        setCriticalListMaxHeight((current) => (current === newHeight ? current : newHeight));
+      } else {
+        setCriticalListMaxHeight((current) => (current === null ? current : null));
+      }
+    } else {
+      setCriticalListMaxHeight((current) => (current === null ? current : null));
+    }
+
+    const recentContainer = recentActionsRef.current;
+    if (recentContainer) {
+      const table = recentContainer.querySelector('table');
+      if (table) {
+        const headerHeight = table.querySelector('thead')?.getBoundingClientRect().height ?? 0;
+        const rows = Array.from(table.querySelectorAll('tbody tr')) as HTMLElement[];
+        if (rows.length > MAX_VISIBLE_RECENT_ACTION_ROWS) {
+          const visibleRows = rows.slice(0, MAX_VISIBLE_RECENT_ACTION_ROWS);
+          const rowsHeight = visibleRows.reduce((sum, row) => sum + row.getBoundingClientRect().height, 0);
+          const newHeight = Math.ceil(headerHeight + rowsHeight);
+          setRecentActionsMaxHeight((current) => (current === newHeight ? current : newHeight));
+        } else {
+          setRecentActionsMaxHeight((current) => (current === null ? current : null));
+        }
+      }
+    } else {
+      setRecentActionsMaxHeight((current) => (current === null ? current : null));
+    }
+  }, [criticalRecords, filteredRecords, layoutVersion]);
+
+  const hasFiltersApplied = searchTerm.trim() !== '' || actionFilter !== 'all' || reasonFilter !== 'all';
 
   return (
     <div
@@ -319,12 +411,124 @@ function DashboardApp(): JSX.Element {
         </p>
       )}
 
+      <section style={{ marginBottom: 24 }}>
+        <h2 style={{ fontSize: 18 }}>Filter and search</h2>
+        <div
+          style={{
+            display: 'flex',
+            flexWrap: 'wrap',
+            gap: 12,
+            alignItems: 'flex-end'
+          }}
+        >
+          <label style={{ display: 'flex', flexDirection: 'column', fontSize: 12, color: '#5f6368', gap: 4 }}>
+            Search
+            <input
+              type="search"
+              value={searchTerm}
+              onChange={(event) => setSearchTerm(event.target.value)}
+              placeholder="Search titles, URLs, notes"
+              style={{
+                padding: '6px 8px',
+                borderRadius: 4,
+                border: '1px solid #c4c4c4',
+                minWidth: 220
+              }}
+            />
+          </label>
+          <label style={{ display: 'flex', flexDirection: 'column', fontSize: 12, color: '#5f6368', gap: 4 }}>
+            Action
+            <select
+              value={actionFilter}
+              onChange={(event) => {
+                const value = event.target.value;
+                setActionFilter(value === 'all' ? 'all' : (value as TabTelemetryRecord['action']));
+              }}
+              style={{
+                padding: '6px 8px',
+                borderRadius: 4,
+                border: '1px solid #c4c4c4',
+                minWidth: 160
+              }}
+            >
+              <option value="all">All actions</option>
+              {availableActions.map((action) => {
+                const label = action.charAt(0).toUpperCase() + action.slice(1);
+                return (
+                  <option key={`action-${action}`} value={action}>
+                    {label}
+                  </option>
+                );
+              })}
+            </select>
+          </label>
+          <label style={{ display: 'flex', flexDirection: 'column', fontSize: 12, color: '#5f6368', gap: 4 }}>
+            Reason
+            <select
+              value={reasonFilter}
+              onChange={(event) => {
+                const value = event.target.value;
+                setReasonFilter(value === 'all' ? 'all' : value);
+              }}
+              style={{
+                padding: '6px 8px',
+                borderRadius: 4,
+                border: '1px solid #c4c4c4',
+                minWidth: 200
+              }}
+            >
+              <option value="all">All reasons</option>
+              {availableReasons.map((reason) => (
+                <option key={`reason-${reason}`} value={reason}>
+                  {reason}
+                </option>
+              ))}
+            </select>
+          </label>
+          <button
+            type="button"
+            onClick={() => {
+              setSearchTerm('');
+              setActionFilter('all');
+              setReasonFilter('all');
+            }}
+            style={{
+              padding: '6px 12px',
+              borderRadius: 4,
+              border: '1px solid #1a73e8',
+              background: '#1a73e8',
+              color: '#fff',
+              fontSize: 13,
+              cursor: 'pointer'
+            }}
+          >
+            Reset filters
+          </button>
+        </div>
+      </section>
+
       <section style={{ marginBottom: 32 }}>
         <h2 style={{ fontSize: 18 }}>Critical tabs</h2>
         {criticalRecords.length === 0 ? (
-          <p style={{ color: '#555' }}>All clear. Recent activity looks healthy.</p>
+          <p style={{ color: '#555' }}>
+            {hasFiltersApplied
+              ? 'No critical tabs match the current filters.'
+              : 'All clear. Recent activity looks healthy.'}
+          </p>
         ) : (
-          <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'grid', gap: 12 }}>
+          <ul
+            ref={criticalListRef}
+            style={{
+              listStyle: 'none',
+              padding: 0,
+              margin: 0,
+              display: 'grid',
+              gap: 12,
+              maxHeight: criticalListMaxHeight !== null ? `${criticalListMaxHeight}px` : undefined,
+              overflowY: criticalListMaxHeight !== null ? 'auto' : undefined,
+              paddingRight: criticalListMaxHeight !== null ? 4 : 0
+            }}
+          >
             {criticalRecords.map((record) => {
               const liveState = tabStates[record.tabId];
               const memorySample = resolveMemorySample(record, liveState);
@@ -369,7 +573,15 @@ function DashboardApp(): JSX.Element {
 
       <section>
         <h2 style={{ fontSize: 18 }}>Recent actions</h2>
-        <div style={{ overflowX: 'auto' }}>
+        <div
+          ref={recentActionsRef}
+          style={{
+            overflowX: 'auto',
+            overflowY: recentActionsMaxHeight !== null ? 'auto' : undefined,
+            maxHeight: recentActionsMaxHeight !== null ? `${recentActionsMaxHeight}px` : undefined,
+            paddingRight: recentActionsMaxHeight !== null ? 4 : undefined
+          }}
+        >
           <table style={{ width: '100%', borderCollapse: 'collapse' }}>
             <thead>
               <tr style={{ textAlign: 'left', borderBottom: '2px solid #e0e0e0' }}>
@@ -382,7 +594,16 @@ function DashboardApp(): JSX.Element {
               </tr>
             </thead>
             <tbody>
-              {records.map((record) => {
+              {filteredRecords.length === 0 ? (
+                <tr>
+                  <td colSpan={6} style={{ padding: '12px', textAlign: 'center', color: '#5f6368', fontSize: 13 }}>
+                    {hasFiltersApplied
+                      ? 'No recent actions match the current filters.'
+                      : 'No recent actions logged yet.'}
+                  </td>
+                </tr>
+              ) : (
+                filteredRecords.map((record) => {
                 const liveState = tabStates[record.tabId];
                 const memorySample = resolveMemorySample(record, liveState);
                 const memoryTrigger = formatMemoryTrigger(record);
@@ -443,7 +664,8 @@ function DashboardApp(): JSX.Element {
                     </td>
                   </tr>
                 );
-              })}
+              })
+              )}
             </tbody>
           </table>
         </div>
