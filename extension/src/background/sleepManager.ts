@@ -99,6 +99,12 @@ export class SleepManager {
       if (resumedFromPriorSession) {
         // Edge restores tabs eagerly on startup; treat them as freshly active to avoid instant reminders.
         overrides.pendingReminder = undefined;
+        overrides.memoryUsageMb = undefined;
+        overrides.totalHeapMb = undefined;
+        overrides.fullPageMemoryMb = undefined;
+        overrides.heapLimitMb = existing?.heapLimitMb; // heap limit is static, keep if previously captured
+        overrides.memoryCapturedAt = undefined;
+        overrides.memorySource = undefined;
       }
 
       state[tab.id] = this.composeTabState(tab.id, now, existing, overrides);
