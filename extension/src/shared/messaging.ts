@@ -2,6 +2,8 @@ import type {
   CompanionOutboundMessage,
   FocusTabResponse,
   MemoryActionTarget,
+  ReminderDecisionOption,
+  ReminderDecisionMessage,
   RuntimeMessage,
   SleepAction,
   TabState,
@@ -103,7 +105,7 @@ export function postToCompanion(message: CompanionOutboundMessage): void {
 export function notifyReminderDecision(
   tabId: number,
   action: SleepAction,
-  proceed: boolean,
+  decision: ReminderDecisionOption,
   reason: TabTelemetryRecord['reason'],
   metrics?: {
     memoryUsageMb?: number;
@@ -113,14 +115,24 @@ export function notifyReminderDecision(
     memoryThresholdMb?: number;
     memoryTarget?: MemoryActionTarget;
     memorySampleNotes?: string;
+    snoozeMinutes?: number;
   }
 ): void {
-  chrome.runtime.sendMessage({
-    type: 'reminder-decision',
+  const payload = {
+    type: 'reminder-decision' as const,
     tabId,
     action,
-    proceed,
+    decision,
     reason,
-    ...(metrics ?? {})
-  });
+    memoryUsageMb: metrics?.memoryUsageMb,
+    totalHeapMb: metrics?.totalHeapMb,
+    heapLimitMb: metrics?.heapLimitMb,
+    fullPageMemoryMb: metrics?.fullPageMemoryMb,
+    memoryThresholdMb: metrics?.memoryThresholdMb,
+    memoryTarget: metrics?.memoryTarget,
+    memorySampleNotes: metrics?.memorySampleNotes,
+    snoozeMinutes: metrics?.snoozeMinutes
+  } satisfies ReminderDecisionMessage;
+
+  chrome.runtime.sendMessage(payload);
 }

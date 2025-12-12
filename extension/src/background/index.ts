@@ -469,6 +469,9 @@ chrome.tabs.onCreated.addListener((tab) => {
 });
 
 chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
+  if (changeInfo.status === 'loading') {
+    void manager.handleTabReload(tabId);
+  }
   if (changeInfo.status === 'complete') {
     void manager.recordTabActivity(tabId);
   }
@@ -600,7 +603,7 @@ chrome.runtime.onMessage.addListener((message: RuntimeMessage, sender, sendRespo
       .handleReminderDecision(
         reminder.tabId,
         reminder.action,
-        reminder.proceed,
+        reminder.decision,
         reminder.reason,
         reminder.memoryUsageMb,
         reminder.totalHeapMb,
@@ -608,7 +611,8 @@ chrome.runtime.onMessage.addListener((message: RuntimeMessage, sender, sendRespo
         reminder.heapLimitMb,
         reminder.memoryThresholdMb,
         reminder.memoryTarget,
-        reminder.memorySampleNotes
+        reminder.memorySampleNotes,
+        reminder.snoozeMinutes
       )
       .then(() => sendResponse({ success: true }));
     return true;

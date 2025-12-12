@@ -1,9 +1,11 @@
 export const DEFAULT_INACTIVITY_TIMEOUT_MINUTES = 5;
 export const DEFAULT_MEMORY_THRESHOLD_MB = 100;
 export const DEFAULT_REMINDER_TIMEOUT_SECONDS = 15;
+export const DEFAULT_REMINDER_SNOOZE_MINUTES = 5;
 export const DEFAULT_ENABLE_FULL_PAGE_SAMPLING = false;
 export const DEFAULT_ENABLE_PROCESS_FALLBACK = true;
 export const DEFAULT_PROCESS_THRESHOLD_MB = 100;
+export const REMINDER_SNOOZE_PRESETS = [5, 10, 15, 30];
 export const PROCESS_THRESHOLD_PRESETS = [100, 250, 500, 800, 1200];
 export const DEFAULT_AUTO_FOCUS_ON_REMINDER = true;
 export const DEFAULT_MEMORY_ACTION_FOR_ACTIVE_TAB = 'reload' as const;
@@ -18,4 +20,4 @@ export const STORAGE_KEYS = {
   nativeHostStatus: 'sleepyTabs.nativeHostStatus'
 } as const;
 
-export const SETTINGS_VERSION = 4;
+export const SETTINGS_VERSION = 5;

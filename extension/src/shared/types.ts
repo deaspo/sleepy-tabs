@@ -1,5 +1,11 @@
 export type SleepAction = 'sleep' | 'reload';
 export type MemoryActionTarget = 'active' | 'inactive';
+export type ReminderDecisionOption =
+  | 'keep-active'
+  | 'sleep-now'
+  | 'reload-now'
+  | 'snooze'
+  | 'ignore-tab';
 
 export interface SleepSettings {
   version: number;
@@ -11,6 +17,7 @@ export interface SleepSettings {
   enableFullPageSampling: boolean;
   enableProcessFallback: boolean;
   processFallbackThresholdMb: number;
+  memoryReminderSnoozeMinutes: number;
   memoryActionForActiveTab: SleepAction;
   memoryActionForInactiveTab: SleepAction;
   memoryPromptForActiveTab: boolean;
@@ -48,6 +55,8 @@ export interface TabState {
   processId?: number;
   processSampledAt?: number;
   processFallbackThresholdMb?: number;
+  reminderSnoozedUntil?: number;
+  ignoredUntilNavigation?: boolean;
 }
 
 export type NativeHostStatus = 'unknown' | 'connecting' | 'connected' | 'disconnected';
@@ -159,8 +168,9 @@ export interface ReminderDecisionMessage {
   type: 'reminder-decision';
   tabId: number;
   action: SleepAction;
-  proceed: boolean;
+  decision: ReminderDecisionOption;
   reason: TabTelemetryRecord['reason'];
+  snoozeMinutes?: number;
   memoryUsageMb?: number;
   totalHeapMb?: number;
   fullPageMemoryMb?: number;

@@ -1,8 +1,14 @@
 import { useEffect, useMemo, useState } from 'react';
 import ReactDOM from 'react-dom/client';
 
+import { DEFAULT_REMINDER_SNOOZE_MINUTES } from '../../shared/constants';
 import { notifyReminderDecision } from '../../shared/messaging';
-import type { MemoryActionTarget, SleepAction, TabTelemetryRecord } from '../../shared/types';
+import type {
+  MemoryActionTarget,
+  ReminderDecisionOption,
+  SleepAction,
+  TabTelemetryRecord
+} from '../../shared/types';
 
 function useCountdown(seconds: number, onElapsed: () => void): number {
   const [remaining, setRemaining] = useState(seconds);
@@ -49,32 +55,39 @@ function ReminderApp(): JSX.Element {
     : undefined;
   const memoryTarget = (params.get('memoryTarget') ?? undefined) as MemoryActionTarget | undefined;
   const memorySampleNotes = params.get('memorySampleNotes') ?? undefined;
+  const snoozeParamRaw = params.get('snoozeMinutes');
+  const snoozeParsed = snoozeParamRaw ? Number(snoozeParamRaw) : Number.NaN;
+  const configuredSnoozeMinutes = Number.isFinite(snoozeParsed) && snoozeParsed > 0 ? snoozeParsed : undefined;
+  const resolvedSnoozeMinutes = configuredSnoozeMinutes ?? DEFAULT_REMINDER_SNOOZE_MINUTES;
 
-  const remaining = useCountdown(timeoutSeconds, () => {
-    notifyReminderDecision(tabId, action, true, reason, {
-      memoryUsageMb,
-      totalHeapMb,
-      fullPageMemoryMb,
-      heapLimitMb,
-      memoryThresholdMb,
-      memoryTarget,
-      memorySampleNotes
-    });
-    window.close();
-  });
+  const commonMetrics = {
+    memoryUsageMb,
+    totalHeapMb,
+    fullPageMemoryMb,
+    heapLimitMb,
+    memoryThresholdMb,
+    memoryTarget,
+    memorySampleNotes
+  };
 
-  const handleDecision = (proceed: boolean) => {
-    notifyReminderDecision(tabId, action, proceed, reason, {
-      memoryUsageMb,
-      totalHeapMb,
-      fullPageMemoryMb,
-      heapLimitMb,
-      memoryThresholdMb,
-      memoryTarget,
-      memorySampleNotes
+  const sendDecision = (decision: ReminderDecisionOption, extras?: { snoozeMinutes?: number }) => {
+    const snoozeMinutes = extras?.snoozeMinutes ?? resolvedSnoozeMinutes;
+    notifyReminderDecision(tabId, action, decision, reason, {
+      ...commonMetrics,
+      snoozeMinutes: snoozeMinutes > 0 ? snoozeMinutes : undefined
     });
     window.close();
   };
+
+  const autoDecision: ReminderDecisionOption = action === 'sleep' ? 'sleep-now' : 'reload-now';
+
+  const remaining = useCountdown(timeoutSeconds, () =>
+    sendDecision(autoDecision, { snoozeMinutes: resolvedSnoozeMinutes })
+  );
+
+  const primaryActionLabel = action === 'sleep' ? 'Sleep now' : 'Reload now';
+  const secondaryActionLabel = action === 'sleep' ? 'Reload now' : 'Sleep now';
+  const secondaryDecision: ReminderDecisionOption = action === 'sleep' ? 'reload-now' : 'sleep-now';
 
   return (
     <div
@@ -136,33 +149,77 @@ function ReminderApp(): JSX.Element {
       ) : (
         <p>This tab has been inactive for a while.</p>
       )}
-      <p>We will proceed automatically in {remaining} seconds.</p>
-      <div style={{ display: 'flex', justifyContent: 'center', gap: 12 }}>
+      <p>
+        We will {action === 'sleep' ? 'sleep this tab' : 'reload this tab'} automatically in {remaining}{' '}
+        seconds if you do nothing.
+      </p>
+      <div style={{ display: 'grid', gap: 10, marginTop: 16 }}>
         <button
           type="button"
-          onClick={() => handleDecision(false)}
+          onClick={() => sendDecision('keep-active')}
           style={{
-            padding: '8px 16px',
+            padding: '10px 16px',
             borderRadius: 6,
             border: '1px solid #1a73e8',
             background: '#fff',
-            color: '#1a73e8'
+            color: '#1a73e8',
+            fontWeight: 600
           }}
         >
-          Keep active
+          Keep tab active
         </button>
         <button
           type="button"
-          onClick={() => handleDecision(true)}
+          onClick={() => sendDecision('snooze', { snoozeMinutes: resolvedSnoozeMinutes })}
           style={{
-            padding: '8px 16px',
+            padding: '10px 16px',
+            borderRadius: 6,
+            border: '1px solid #5f6368',
+            background: '#fff',
+            color: '#3c4043'
+          }}
+        >
+          Remind me in {resolvedSnoozeMinutes} minute{resolvedSnoozeMinutes === 1 ? '' : 's'}
+        </button>
+        <button
+          type="button"
+          onClick={() => sendDecision('ignore-tab')}
+          style={{
+            padding: '10px 16px',
+            borderRadius: 6,
+            border: '1px solid #dadce0',
+            background: '#fff',
+            color: '#3c4043'
+          }}
+        >
+          Ignore this tab (clears on reload)
+        </button>
+        <button
+          type="button"
+          onClick={() => sendDecision(autoDecision)}
+          style={{
+            padding: '10px 16px',
             borderRadius: 6,
             border: 'none',
             background: '#1a73e8',
-            color: '#fff'
+            color: '#fff',
+            fontWeight: 600
           }}
         >
-          {action === 'sleep' ? 'Sleep now' : 'Reload now'}
+          {primaryActionLabel}
+        </button>
+        <button
+          type="button"
+          onClick={() => sendDecision(secondaryDecision)}
+          style={{
+            padding: '10px 16px',
+            borderRadius: 6,
+            border: '1px solid #1a1a1a',
+            background: '#fff',
+            color: '#1a1a1a'
+          }}
+        >
+          {secondaryActionLabel}
         </button>
       </div>
     </div>

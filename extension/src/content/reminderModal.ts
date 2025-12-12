@@ -1,5 +1,11 @@
+import { DEFAULT_REMINDER_SNOOZE_MINUTES } from '../shared/constants';
 import { notifyReminderDecision } from '../shared/messaging';
-import type { MemoryActionTarget, SleepAction, TabTelemetryRecord } from '../shared/types';
+import type {
+  MemoryActionTarget,
+  ReminderDecisionOption,
+  SleepAction,
+  TabTelemetryRecord
+} from '../shared/types';
 
 type ReminderPayload = {
   type: 'sleepy-tabs-reminder';
@@ -16,6 +22,7 @@ type ReminderPayload = {
   memoryThresholdMb?: number;
   memoryTarget?: MemoryActionTarget;
   memorySampleNotes?: string;
+  snoozeMinutes?: number;
 };
 
 const OVERLAY_ID = 'sleepy-tabs-reminder-overlay';
@@ -168,31 +175,113 @@ function renderOverlay(payload: ReminderPayload): void {
   countdown.style.color = '#555';
 
   const buttons = document.createElement('div');
-  buttons.style.display = 'flex';
-  buttons.style.justifyContent = 'center';
-  buttons.style.gap = '12px';
+  buttons.style.display = 'grid';
+  buttons.style.gap = '10px';
   buttons.style.marginTop = '16px';
 
-  const stayButton = document.createElement('button');
-  stayButton.textContent = 'Keep tab active';
-  stayButton.style.padding = '8px 16px';
-  stayButton.style.borderRadius = '8px';
-  stayButton.style.border = '1px solid #1a73e8';
-  stayButton.style.background = '#ffffff';
-  stayButton.style.color = '#1a73e8';
-  stayButton.style.cursor = 'pointer';
+  const resolvedSnoozeMinutes =
+    typeof payload.snoozeMinutes === 'number' && payload.snoozeMinutes > 0
+      ? payload.snoozeMinutes
+      : DEFAULT_REMINDER_SNOOZE_MINUTES;
 
-  const proceedButton = document.createElement('button');
-  proceedButton.textContent = payload.action === 'sleep' ? 'Put tab to sleep' : 'Reload now';
-  proceedButton.style.padding = '8px 16px';
-  proceedButton.style.borderRadius = '8px';
-  proceedButton.style.border = 'none';
-  proceedButton.style.background = '#1a73e8';
-  proceedButton.style.color = '#ffffff';
-  proceedButton.style.cursor = 'pointer';
+  const commonMetrics = {
+    memoryUsageMb: payload.memoryUsageMb,
+    totalHeapMb: payload.totalHeapMb,
+    fullPageMemoryMb: payload.fullPageMemoryMb,
+    heapLimitMb: payload.heapLimitMb,
+    memoryThresholdMb: payload.memoryThresholdMb,
+    memoryTarget: payload.memoryTarget,
+    memorySampleNotes: payload.memorySampleNotes
+  };
 
-  buttons.appendChild(stayButton);
-  buttons.appendChild(proceedButton);
+  let intervalHandle: number | null = null;
+
+  const dispatchDecision = (decision: ReminderDecisionOption, extras?: { snoozeMinutes?: number }) => {
+    if (intervalHandle !== null) {
+      window.clearInterval(intervalHandle);
+      intervalHandle = null;
+    }
+    removeOverlay();
+    const snoozeMinutes = extras?.snoozeMinutes ?? resolvedSnoozeMinutes;
+    notifyReminderDecision(payload.tabId, payload.action, decision, payload.reason, {
+      ...commonMetrics,
+      snoozeMinutes: snoozeMinutes > 0 ? snoozeMinutes : undefined
+    });
+  };
+
+  const autoDecision: ReminderDecisionOption = payload.action === 'sleep' ? 'sleep-now' : 'reload-now';
+
+  const createButton = (
+    label: string,
+    onClick: () => void,
+    options: {
+      background: string;
+      color: string;
+      border?: string;
+      fontWeight?: string;
+    }
+  ): HTMLButtonElement => {
+    const button = document.createElement('button');
+    button.textContent = label;
+    button.type = 'button';
+    button.style.padding = '10px 16px';
+    button.style.borderRadius = '6px';
+    button.style.cursor = 'pointer';
+    button.style.background = options.background;
+    button.style.color = options.color;
+    button.style.border = options.border ?? 'none';
+    if (options.fontWeight) {
+      button.style.fontWeight = options.fontWeight;
+    }
+    button.addEventListener('click', onClick);
+    return button;
+  };
+
+  buttons.appendChild(
+    createButton('Keep tab active', () => dispatchDecision('keep-active'), {
+      background: '#ffffff',
+      color: '#1a73e8',
+      border: '1px solid #1a73e8',
+      fontWeight: '600'
+    })
+  );
+  buttons.appendChild(
+    createButton(
+      `Remind me in ${resolvedSnoozeMinutes} minute${resolvedSnoozeMinutes === 1 ? '' : 's'}`,
+      () => dispatchDecision('snooze', { snoozeMinutes: resolvedSnoozeMinutes }),
+      {
+        background: '#ffffff',
+        color: '#3c4043',
+        border: '1px solid #5f6368'
+      }
+    )
+  );
+  buttons.appendChild(
+    createButton('Ignore this tab (clears on reload)', () => dispatchDecision('ignore-tab'), {
+      background: '#ffffff',
+      color: '#3c4043',
+      border: '1px solid #dadce0'
+    })
+  );
+
+  const primaryLabel = payload.action === 'sleep' ? 'Sleep now' : 'Reload now';
+  buttons.appendChild(
+    createButton(primaryLabel, () => dispatchDecision(autoDecision), {
+      background: '#1a73e8',
+      color: '#ffffff',
+      fontWeight: '600'
+    })
+  );
+
+  const secondaryDecision: ReminderDecisionOption = payload.action === 'sleep' ? 'reload-now' : 'sleep-now';
+  const secondaryLabel = payload.action === 'sleep' ? 'Reload now' : 'Sleep now';
+  buttons.appendChild(
+    createButton(secondaryLabel, () => dispatchDecision(secondaryDecision), {
+      background: '#ffffff',
+      color: '#1a1a1a',
+      border: '1px solid #1a1a1a'
+    })
+  );
 
   panel.appendChild(heading);
   panel.appendChild(info);
@@ -206,43 +295,16 @@ function renderOverlay(payload: ReminderPayload): void {
   document.body.appendChild(overlay);
 
   let remaining = payload.timeoutSeconds ?? 15;
-  countdown.textContent = `Taking action in ${remaining} seconds...`;
+  countdown.textContent = `We will ${payload.action === 'sleep' ? 'sleep this tab' : 'reload this tab'} automatically in ${remaining} seconds.`;
 
-  const interval = window.setInterval(() => {
+  intervalHandle = window.setInterval(() => {
     remaining -= 1;
     if (remaining <= 0) {
-      window.clearInterval(interval);
-      removeOverlay();
-      notifyReminderDecision(payload.tabId, payload.action, true, payload.reason, {
-        memoryUsageMb: payload.memoryUsageMb,
-        totalHeapMb: payload.totalHeapMb,
-        heapLimitMb: payload.heapLimitMb,
-        fullPageMemoryMb: payload.fullPageMemoryMb,
-        memoryThresholdMb: payload.memoryThresholdMb,
-        memoryTarget: payload.memoryTarget,
-        memorySampleNotes: payload.memorySampleNotes
-      });
+      dispatchDecision(autoDecision, { snoozeMinutes: resolvedSnoozeMinutes });
     } else {
-      countdown.textContent = `Taking action in ${remaining} seconds...`;
+      countdown.textContent = `We will ${payload.action === 'sleep' ? 'sleep this tab' : 'reload this tab'} automatically in ${remaining} seconds.`;
     }
   }, 1000);
-
-  const sendDecision = (proceed: boolean) => {
-    window.clearInterval(interval);
-    removeOverlay();
-    notifyReminderDecision(payload.tabId, payload.action, proceed, payload.reason, {
-      memoryUsageMb: payload.memoryUsageMb,
-      totalHeapMb: payload.totalHeapMb,
-      heapLimitMb: payload.heapLimitMb,
-      fullPageMemoryMb: payload.fullPageMemoryMb,
-      memoryThresholdMb: payload.memoryThresholdMb,
-        memoryTarget: payload.memoryTarget,
-        memorySampleNotes: payload.memorySampleNotes
-    });
-  };
-
-  stayButton.addEventListener('click', () => sendDecision(false));
-  proceedButton.addEventListener('click', () => sendDecision(true));
 }
 
 chrome.runtime.onMessage.addListener((message: ReminderPayload) => {

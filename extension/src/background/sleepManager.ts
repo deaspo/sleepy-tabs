@@ -5,7 +5,11 @@ import {
   deleteTabState,
   updateSettings
 } from '../shared/storage';
-import { DEFAULT_MEMORY_THRESHOLD_MB, DEFAULT_REMINDER_TIMEOUT_SECONDS } from '../shared/constants';
+import {
+  DEFAULT_MEMORY_THRESHOLD_MB,
+  DEFAULT_REMINDER_SNOOZE_MINUTES,
+  DEFAULT_REMINDER_TIMEOUT_SECONDS
+} from '../shared/constants';
 import {
   postToCompanion,
   sendRuntimeMessage
@@ -16,6 +20,7 @@ import type {
   ConsentState,
   MemoryActionTarget,
   NativeHostStatus,
+  ReminderDecisionOption,
   SleepAction,
   SleepSettings,
   TabMemorySample,
@@ -30,6 +35,7 @@ const PROCESS_SAMPLE_REFRESH_MS = 60000;
 const SESSION_RESUME_RESET_THRESHOLD_MS = 60 * 1000;
 const SATURATED_PROBE_RETRY_DELAY_MS = 2000;
 const RESAMPLE_DEBOUNCE_WINDOW_MS = SATURATED_PROBE_RETRY_DELAY_MS * 4;
+const MINUTE_MS = 60 * 1000;
 
 interface SleepAllResult {
   attempted: number;
@@ -57,6 +63,7 @@ export class SleepManager {
   >();
   private saturatedProbeRetries = new Map<number, number>();
   private saturatedProbeResampleWindows = new Map<number, number>();
+  private reminderSnoozeTimers = new Map<number, ReturnType<typeof setTimeout>>();
 
   async init(): Promise<void> {
     this.settings = await getSettings();
@@ -111,6 +118,8 @@ export class SleepManager {
         overrides.memoryCapturedAt = undefined;
         overrides.memorySource = undefined;
         overrides.memorySampleNotes = undefined;
+        overrides.reminderSnoozedUntil = undefined;
+        overrides.ignoredUntilNavigation = undefined;
       }
 
       state[tab.id] = this.composeTabState(tab.id, now, existing, overrides);
@@ -137,13 +146,28 @@ export class SleepManager {
     this.broadcastTabStateUpdate(tabId, state[tabId]);
   }
 
-  async setTabIgnored(tabId: number, ignored: boolean): Promise<void> {
+  async setTabIgnored(tabId: number, ignored: boolean, options?: { temporary?: boolean }): Promise<void> {
     const state = await getTabState();
     const existing = state[tabId];
     const now = Date.now();
-    state[tabId] = this.composeTabState(tabId, now, existing, { ignored });
+    const overrides: Partial<TabState> = { ignored };
+    if (options?.temporary) {
+      overrides.ignoredUntilNavigation = ignored ? true : undefined;
+    } else if (!ignored) {
+      overrides.ignoredUntilNavigation = undefined;
+    }
+    state[tabId] = this.composeTabState(tabId, now, existing, overrides);
     await setTabState(state);
     this.broadcastTabStateUpdate(tabId, state[tabId]);
+  }
+
+  async handleTabReload(tabId: number): Promise<void> {
+    const state = await getTabState();
+    const tabState = state[tabId];
+    if (!tabState?.ignoredUntilNavigation) {
+      return;
+    }
+    await this.setTabIgnored(tabId, false);
   }
 
   async removeTab(tabId: number): Promise<void> {
@@ -152,6 +176,7 @@ export class SleepManager {
     this.clearReminderTimeout(tabId);
     await this.closeExistingReminderWindow(tabId);
     this.reminderMemoryContext.delete(tabId);
+    this.cancelReminderSnooze(tabId);
     postToCompanion({ type: 'untrack-tab', tabId });
   }
 
@@ -172,6 +197,16 @@ export class SleepManager {
       const tabInfo = state[tab.id];
       if (!tabInfo || tabInfo.ignored) {
         continue;
+      }
+
+      if (typeof tabInfo.reminderSnoozedUntil === 'number') {
+        if (Date.now() < tabInfo.reminderSnoozedUntil) {
+          continue;
+        }
+        tabInfo.reminderSnoozedUntil = undefined;
+        await setTabState(state);
+        this.broadcastTabStateUpdate(tab.id, tabInfo);
+        this.cancelReminderSnooze(tab.id);
       }
 
       const isActive = Boolean(tab.active);
@@ -247,6 +282,7 @@ export class SleepManager {
       memoryTarget?: MemoryActionTarget;
       memoryPrompted?: boolean;
       memorySampleNotes?: string;
+      snoozeMinutes?: number;
     }
   ): Promise<void> {
     const state = await getTabState();
@@ -268,8 +304,10 @@ export class SleepManager {
     const shouldAutoFocus = this.settings?.autoFocusOnReminder !== false;
 
     tabState.pendingReminder = action;
+    tabState.reminderSnoozedUntil = undefined;
     await setTabState(state);
     this.broadcastTabStateUpdate(tabId, tabState);
+    this.cancelReminderSnooze(tabId);
 
     const reminderMetrics = {
       totalHeapMb: metrics?.totalHeapMb ?? tabState.totalHeapMb,
@@ -283,7 +321,11 @@ export class SleepManager {
             : undefined,
       memoryTarget: metrics?.memoryTarget,
       memoryPrompted: metrics?.memoryPrompted ?? true,
-      memorySampleNotes: metrics?.memorySampleNotes ?? tabState.memorySampleNotes
+      memorySampleNotes: metrics?.memorySampleNotes ?? tabState.memorySampleNotes,
+      snoozeMinutes:
+        typeof metrics?.snoozeMinutes === 'number'
+          ? metrics.snoozeMinutes
+          : this.settings?.memoryReminderSnoozeMinutes ?? DEFAULT_REMINDER_SNOOZE_MINUTES
     } satisfies {
       totalHeapMb?: number;
       fullPageMemoryMb?: number;
@@ -292,6 +334,7 @@ export class SleepManager {
       memoryTarget?: MemoryActionTarget;
       memoryPrompted?: boolean;
       memorySampleNotes?: string;
+      snoozeMinutes?: number;
     };
 
     if (reason === 'memory') {
@@ -352,7 +395,8 @@ export class SleepManager {
         memoryCapturedAt: tabState.memoryCapturedAt,
         memoryThresholdMb: reminderMetrics.memoryThresholdMb,
         memoryTarget: reminderMetrics.memoryTarget,
-        memorySampleNotes: reminderMetrics.memorySampleNotes
+        memorySampleNotes: reminderMetrics.memorySampleNotes,
+        snoozeMinutes: reminderMetrics.snoozeMinutes
       });
     } catch (error) {
       console.warn('Reminder message failed, attempting standalone reminder', error);
@@ -361,7 +405,8 @@ export class SleepManager {
         await this.launchStandaloneReminder(tabId, action, reason, reminderMemoryUsage, tabState, {
           memoryThresholdMb: reminderMetrics.memoryThresholdMb,
           memoryTarget: reminderMetrics.memoryTarget,
-          memorySampleNotes: reminderMetrics.memorySampleNotes
+          memorySampleNotes: reminderMetrics.memorySampleNotes,
+          snoozeMinutes: reminderMetrics.snoozeMinutes
         });
       } catch (fallbackError) {
         console.warn('Standalone reminder failed, proceeding automatically', fallbackError);
@@ -382,7 +427,7 @@ export class SleepManager {
   async handleReminderDecision(
     tabId: number,
     action: SleepAction,
-    proceed: boolean,
+    decision: ReminderDecisionOption,
     reason: TabTelemetryRecord['reason'],
     memoryUsageMb?: number,
     totalHeapMb?: number,
@@ -390,7 +435,8 @@ export class SleepManager {
     heapLimitMb?: number,
     memoryThresholdMb?: number,
     memoryTarget?: MemoryActionTarget,
-    memorySampleNotes?: string
+    memorySampleNotes?: string,
+    snoozeMinutes?: number
   ): Promise<void> {
     const state = await getTabState();
     let tabState = state[tabId];
@@ -405,6 +451,7 @@ export class SleepManager {
       state[tabId] = tabState;
     }
     delete tabState.pendingReminder;
+    tabState.reminderSnoozedUntil = undefined;
     await setTabState(state);
     this.broadcastTabStateUpdate(tabId, tabState);
 
@@ -414,6 +461,7 @@ export class SleepManager {
     if (reminderContext) {
       this.reminderMemoryContext.delete(tabId);
     }
+    this.cancelReminderSnooze(tabId);
     const context = reminderContext ??
       (reason === 'memory'
         ? {
@@ -424,16 +472,40 @@ export class SleepManager {
           }
         : undefined);
 
-    if (proceed) {
-      await this.executeAction(tabId, action, reason, memoryUsageMb, false, {
-        totalHeapMb,
-        fullPageMemoryMb,
-        heapLimitMb,
-        memoryThresholdMb: context?.memoryThresholdMb,
-        memoryTarget: context?.memoryTarget,
-        memoryPrompted: context?.memoryPrompted ?? true,
-        memorySampleNotes: context?.memorySampleNotes ?? memorySampleNotes
-      });
+    const resolvedMetrics = {
+      totalHeapMb,
+      fullPageMemoryMb,
+      heapLimitMb,
+      memoryThresholdMb: context?.memoryThresholdMb,
+      memoryTarget: context?.memoryTarget,
+      memoryPrompted: context?.memoryPrompted ?? true,
+      memorySampleNotes: context?.memorySampleNotes ?? memorySampleNotes
+    } as const;
+
+    switch (decision) {
+      case 'keep-active':
+        return;
+      case 'snooze': {
+        const defaultMinutes = this.settings?.memoryReminderSnoozeMinutes ?? DEFAULT_REMINDER_SNOOZE_MINUTES;
+        const chosenMinutes = typeof snoozeMinutes === 'number' && snoozeMinutes > 0 ? snoozeMinutes : defaultMinutes;
+        await this.applyReminderSnooze(tabId, chosenMinutes, state, tabState);
+        return;
+      }
+      case 'ignore-tab':
+        await this.setTabIgnored(tabId, true, { temporary: true });
+        return;
+      case 'sleep-now':
+        await this.executeAction(tabId, 'sleep', reason, memoryUsageMb, false, resolvedMetrics);
+        return;
+      case 'reload-now':
+        await this.executeAction(tabId, 'reload', reason, memoryUsageMb, false, resolvedMetrics);
+        return;
+      default:
+        if (action === 'sleep') {
+          await this.executeAction(tabId, 'sleep', reason, memoryUsageMb, false, resolvedMetrics);
+        } else {
+          await this.executeAction(tabId, 'reload', reason, memoryUsageMb, false, resolvedMetrics);
+        }
     }
   }
 
@@ -775,12 +847,24 @@ export class SleepManager {
     const state = await getTabState();
     const existing = state[tab.id];
     const now = Date.now();
-    state[tab.id] = this.composeTabState(tab.id, now, existing, {
+    const overrides: Partial<TabState> = {
       lastSeenAt: now,
       url: tab.url ?? existing?.url,
       title: tab.title ?? existing?.title,
       windowId: tab.windowId ?? existing?.windowId
-    });
+    };
+
+    if (
+      existing?.ignoredUntilNavigation &&
+      existing.url &&
+      tab.url &&
+      existing.url !== tab.url
+    ) {
+      overrides.ignored = false;
+      overrides.ignoredUntilNavigation = undefined;
+    }
+
+    state[tab.id] = this.composeTabState(tab.id, now, existing, overrides);
     await setTabState(state);
     this.broadcastTabStateUpdate(tab.id, state[tab.id]);
   }
@@ -807,6 +891,8 @@ export class SleepManager {
       processId: existing?.processId,
       processSampledAt: existing?.processSampledAt,
       processFallbackThresholdMb: existing?.processFallbackThresholdMb,
+      reminderSnoozedUntil: existing?.reminderSnoozedUntil,
+      ignoredUntilNavigation: existing?.ignoredUntilNavigation,
       url: existing?.url,
       title: existing?.title,
       windowId: existing?.windowId,
@@ -960,6 +1046,7 @@ export class SleepManager {
       memoryTarget?: MemoryActionTarget;
       memoryPrompted?: boolean;
       memorySampleNotes?: string;
+      snoozeMinutes?: number;
     }
   ): void {
     const timeoutSeconds = this.settings?.reminderTimeoutSeconds ?? DEFAULT_REMINDER_TIMEOUT_SECONDS;
@@ -1002,10 +1089,12 @@ export class SleepManager {
       memoryTarget?: MemoryActionTarget;
       memoryPrompted?: boolean;
       memorySampleNotes?: string;
+      snoozeMinutes?: number;
     }
   ): Promise<void> {
     this.reminderTimeouts.delete(tabId);
     await this.closeExistingReminderWindow(tabId);
+    this.cancelReminderSnooze(tabId);
     const state = await getTabState();
     const tabState = state[tabId];
     if (tabState?.pendingReminder) {
@@ -1029,6 +1118,45 @@ export class SleepManager {
     await this.executeAction(tabId, action, reason, resolvedMemoryUsage, true, resolvedMetrics);
   }
 
+  private async applyReminderSnooze(
+    tabId: number,
+    minutes: number,
+    stateSnapshot?: Record<number, TabState>,
+    tabStateSnapshot?: TabState
+  ): Promise<void> {
+    const delayMinutes = Math.max(1, minutes);
+    const delayMs = delayMinutes * MINUTE_MS;
+    const state = stateSnapshot ?? (await getTabState());
+    const tabState = tabStateSnapshot ?? state[tabId];
+    if (!tabState) {
+      return;
+    }
+    const until = Date.now() + delayMs;
+    tabState.reminderSnoozedUntil = until;
+    await setTabState(state);
+    this.broadcastTabStateUpdate(tabId, tabState);
+    this.scheduleReminderSnooze(tabId, delayMs);
+  }
+
+  private scheduleReminderSnooze(tabId: number, delayMs: number): void {
+    this.cancelReminderSnooze(tabId);
+    const handle = setTimeout(() => {
+      this.reminderSnoozeTimers.delete(tabId);
+      void this.evaluateTabs().catch((error) => {
+        console.warn('Failed to evaluate tabs after snooze expiry', error);
+      });
+    }, delayMs);
+    this.reminderSnoozeTimers.set(tabId, handle);
+  }
+
+  private cancelReminderSnooze(tabId: number): void {
+    const handle = this.reminderSnoozeTimers.get(tabId);
+    if (handle) {
+      clearTimeout(handle);
+      this.reminderSnoozeTimers.delete(tabId);
+    }
+  }
+
   private async launchStandaloneReminder(
     tabId: number,
     action: SleepAction,
@@ -1039,6 +1167,7 @@ export class SleepManager {
       memoryThresholdMb?: number;
       memoryTarget?: MemoryActionTarget;
       memorySampleNotes?: string;
+      snoozeMinutes?: number;
     }
   ): Promise<void> {
     const reminderUrl = new URL(chrome.runtime.getURL('src/pages/reminder/index.html'));
@@ -1078,6 +1207,9 @@ export class SleepManager {
     }
     if (metrics?.memorySampleNotes) {
       reminderUrl.searchParams.set('memorySampleNotes', metrics.memorySampleNotes);
+    }
+    if (typeof metrics?.snoozeMinutes === 'number') {
+      reminderUrl.searchParams.set('snoozeMinutes', String(metrics.snoozeMinutes));
     }
 
     await new Promise<void>((resolve, reject) => {

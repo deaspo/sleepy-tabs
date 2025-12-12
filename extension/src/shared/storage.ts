@@ -11,6 +11,7 @@ import {
   DEFAULT_PROCESS_THRESHOLD_MB,
   DEFAULT_REMINDER_TIMEOUT_SECONDS,
   SETTINGS_VERSION,
+  DEFAULT_REMINDER_SNOOZE_MINUTES,
   STORAGE_KEYS
 } from './constants';
 import type { ConsentState, NativeHostStatus, SleepSettings, TabState } from './types';
@@ -24,6 +25,7 @@ export async function getSettings(): Promise<SleepSettings> {
     memoryThresholdMb: DEFAULT_MEMORY_THRESHOLD_MB,
     enableAutoSleep: true,
     reminderTimeoutSeconds: DEFAULT_REMINDER_TIMEOUT_SECONDS,
+    memoryReminderSnoozeMinutes: DEFAULT_REMINDER_SNOOZE_MINUTES,
     autoFocusOnReminder: DEFAULT_AUTO_FOCUS_ON_REMINDER,
     enableFullPageSampling: DEFAULT_ENABLE_FULL_PAGE_SAMPLING,
     enableProcessFallback: DEFAULT_ENABLE_PROCESS_FALLBACK,
@@ -48,6 +50,7 @@ export async function getSettings(): Promise<SleepSettings> {
   const hasMemoryActionInactive = typeof stored.memoryActionForInactiveTab === 'string';
   const hasMemoryPromptActive = typeof stored.memoryPromptForActiveTab === 'boolean';
   const hasMemoryPromptInactive = typeof stored.memoryPromptForInactiveTab === 'boolean';
+  const hasSnoozeMinutes = typeof stored.memoryReminderSnoozeMinutes === 'number';
   const needsVersionMigration = stored.version !== SETTINGS_VERSION;
   const legacyAutoReload = stored.enableAutoReload;
   const resolvedActiveAction = hasMemoryActionActive
@@ -82,6 +85,9 @@ export async function getSettings(): Promise<SleepSettings> {
         processFallbackThresholdMb: hasProcessSettings
           ? stored.processFallbackThresholdMb
           : defaults.processFallbackThresholdMb,
+        memoryReminderSnoozeMinutes: hasSnoozeMinutes
+          ? stored.memoryReminderSnoozeMinutes
+          : defaults.memoryReminderSnoozeMinutes,
         memoryActionForActiveTab: resolvedActiveAction,
         memoryActionForInactiveTab: resolvedInactiveAction,
         memoryPromptForActiveTab: resolvedPromptActive,
@@ -101,6 +107,9 @@ export async function getSettings(): Promise<SleepSettings> {
         processFallbackThresholdMb: hasProcessSettings
           ? stored.processFallbackThresholdMb
           : defaults.processFallbackThresholdMb,
+        memoryReminderSnoozeMinutes: hasSnoozeMinutes
+          ? stored.memoryReminderSnoozeMinutes
+          : defaults.memoryReminderSnoozeMinutes,
         memoryActionForActiveTab: resolvedActiveAction,
         memoryActionForInactiveTab: resolvedInactiveAction,
         memoryPromptForActiveTab: resolvedPromptActive,
