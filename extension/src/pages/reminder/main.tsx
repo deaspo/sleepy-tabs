@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import ReactDOM from 'react-dom/client';
 
-import { DEFAULT_REMINDER_SNOOZE_MINUTES } from '../../shared/constants';
+import { DEFAULT_REMINDER_SNOOZE_MINUTES, REMINDER_SNOOZE_PRESETS } from '../../shared/constants';
 import { notifyReminderDecision } from '../../shared/messaging';
 import type {
   MemoryActionTarget,
@@ -58,7 +58,18 @@ function ReminderApp(): JSX.Element {
   const snoozeParamRaw = params.get('snoozeMinutes');
   const snoozeParsed = snoozeParamRaw ? Number(snoozeParamRaw) : Number.NaN;
   const configuredSnoozeMinutes = Number.isFinite(snoozeParsed) && snoozeParsed > 0 ? snoozeParsed : undefined;
-  const resolvedSnoozeMinutes = configuredSnoozeMinutes ?? DEFAULT_REMINDER_SNOOZE_MINUTES;
+  const defaultSnoozeMinutes = configuredSnoozeMinutes ?? DEFAULT_REMINDER_SNOOZE_MINUTES;
+  const snoozeOptions = useMemo(() => {
+    const merged = new Set<number>([defaultSnoozeMinutes, ...REMINDER_SNOOZE_PRESETS]);
+    return Array.from(merged)
+      .filter((value) => value > 0)
+      .sort((a, b) => a - b);
+  }, [defaultSnoozeMinutes]);
+  const [selectedSnoozeMinutes, setSelectedSnoozeMinutes] = useState<number>(defaultSnoozeMinutes);
+
+  useEffect(() => {
+    setSelectedSnoozeMinutes(defaultSnoozeMinutes);
+  }, [defaultSnoozeMinutes]);
 
   const commonMetrics = {
     memoryUsageMb,
@@ -71,7 +82,7 @@ function ReminderApp(): JSX.Element {
   };
 
   const sendDecision = (decision: ReminderDecisionOption, extras?: { snoozeMinutes?: number }) => {
-    const snoozeMinutes = extras?.snoozeMinutes ?? resolvedSnoozeMinutes;
+    const snoozeMinutes = extras?.snoozeMinutes ?? selectedSnoozeMinutes;
     notifyReminderDecision(tabId, action, decision, reason, {
       ...commonMetrics,
       snoozeMinutes: snoozeMinutes > 0 ? snoozeMinutes : undefined
@@ -82,7 +93,7 @@ function ReminderApp(): JSX.Element {
   const autoDecision: ReminderDecisionOption = action === 'sleep' ? 'sleep-now' : 'reload-now';
 
   const remaining = useCountdown(timeoutSeconds, () =>
-    sendDecision(autoDecision, { snoozeMinutes: resolvedSnoozeMinutes })
+    sendDecision(autoDecision, { snoozeMinutes: selectedSnoozeMinutes })
   );
 
   const primaryActionLabel = action === 'sleep' ? 'Sleep now' : 'Reload now';
@@ -168,19 +179,47 @@ function ReminderApp(): JSX.Element {
         >
           Keep tab active
         </button>
-        <button
-          type="button"
-          onClick={() => sendDecision('snooze', { snoozeMinutes: resolvedSnoozeMinutes })}
+        <div
           style={{
-            padding: '10px 16px',
-            borderRadius: 6,
-            border: '1px solid #5f6368',
-            background: '#fff',
-            color: '#3c4043'
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: 8
           }}
         >
-          Remind me in {resolvedSnoozeMinutes} minute{resolvedSnoozeMinutes === 1 ? '' : 's'}
-        </button>
+          <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 14, color: '#3c4043' }}>
+            Remind me in
+            <select
+              value={selectedSnoozeMinutes}
+              onChange={(event) => setSelectedSnoozeMinutes(Number(event.target.value))}
+              style={{
+                padding: '6px 10px',
+                borderRadius: 6,
+                border: '1px solid #5f6368',
+                fontSize: 14
+              }}
+            >
+              {snoozeOptions.map((minutes) => (
+                <option key={minutes} value={minutes}>
+                  {minutes} minute{minutes === 1 ? '' : 's'}
+                </option>
+              ))}
+            </select>
+          </label>
+          <button
+            type="button"
+            onClick={() => sendDecision('snooze', { snoozeMinutes: selectedSnoozeMinutes })}
+            style={{
+              padding: '10px 16px',
+              borderRadius: 6,
+              border: '1px solid #5f6368',
+              background: '#fff',
+              color: '#3c4043'
+            }}
+          >
+            Snooze
+          </button>
+        </div>
         <button
           type="button"
           onClick={() => sendDecision('ignore-tab')}

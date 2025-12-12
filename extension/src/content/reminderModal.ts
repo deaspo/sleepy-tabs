@@ -1,4 +1,4 @@
-import { DEFAULT_REMINDER_SNOOZE_MINUTES } from '../shared/constants';
+import { DEFAULT_REMINDER_SNOOZE_MINUTES, REMINDER_SNOOZE_PRESETS } from '../shared/constants';
 import { notifyReminderDecision } from '../shared/messaging';
 import type {
   MemoryActionTarget,
@@ -183,6 +183,10 @@ function renderOverlay(payload: ReminderPayload): void {
     typeof payload.snoozeMinutes === 'number' && payload.snoozeMinutes > 0
       ? payload.snoozeMinutes
       : DEFAULT_REMINDER_SNOOZE_MINUTES;
+  const snoozeOptions = Array.from(new Set<number>([resolvedSnoozeMinutes, ...REMINDER_SNOOZE_PRESETS]))
+    .filter((value) => value > 0)
+    .sort((a, b) => a - b);
+  let selectedSnoozeMinutes = resolvedSnoozeMinutes;
 
   const commonMetrics = {
     memoryUsageMb: payload.memoryUsageMb,
@@ -202,7 +206,7 @@ function renderOverlay(payload: ReminderPayload): void {
       intervalHandle = null;
     }
     removeOverlay();
-    const snoozeMinutes = extras?.snoozeMinutes ?? resolvedSnoozeMinutes;
+    const snoozeMinutes = extras?.snoozeMinutes ?? selectedSnoozeMinutes;
     notifyReminderDecision(payload.tabId, payload.action, decision, payload.reason, {
       ...commonMetrics,
       snoozeMinutes: snoozeMinutes > 0 ? snoozeMinutes : undefined
@@ -245,17 +249,50 @@ function renderOverlay(payload: ReminderPayload): void {
       fontWeight: '600'
     })
   );
-  buttons.appendChild(
-    createButton(
-      `Remind me in ${resolvedSnoozeMinutes} minute${resolvedSnoozeMinutes === 1 ? '' : 's'}`,
-      () => dispatchDecision('snooze', { snoozeMinutes: resolvedSnoozeMinutes }),
-      {
-        background: '#ffffff',
-        color: '#3c4043',
-        border: '1px solid #5f6368'
-      }
-    )
-  );
+  const snoozeRow = document.createElement('div');
+  snoozeRow.style.display = 'flex';
+  snoozeRow.style.alignItems = 'center';
+  snoozeRow.style.justifyContent = 'center';
+  snoozeRow.style.gap = '8px';
+
+  const snoozeLabel = document.createElement('label');
+  snoozeLabel.style.display = 'flex';
+  snoozeLabel.style.alignItems = 'center';
+  snoozeLabel.style.gap = '6px';
+  snoozeLabel.style.fontSize = '14px';
+  snoozeLabel.style.color = '#3c4043';
+  snoozeLabel.textContent = 'Remind me in';
+
+  const snoozeSelect = document.createElement('select');
+  snoozeSelect.style.padding = '6px 10px';
+  snoozeSelect.style.borderRadius = '6px';
+  snoozeSelect.style.border = '1px solid #5f6368';
+  snoozeSelect.style.fontSize = '14px';
+  snoozeOptions.forEach((minutes) => {
+    const option = document.createElement('option');
+    option.value = String(minutes);
+    option.textContent = `${minutes} minute${minutes === 1 ? '' : 's'}`;
+    if (minutes === resolvedSnoozeMinutes) {
+      option.selected = true;
+    }
+    snoozeSelect.appendChild(option);
+  });
+  snoozeSelect.addEventListener('change', (event) => {
+    const nextValue = Number((event.target as HTMLSelectElement).value);
+    selectedSnoozeMinutes = Number.isFinite(nextValue) && nextValue > 0 ? nextValue : resolvedSnoozeMinutes;
+  });
+
+  snoozeLabel.appendChild(snoozeSelect);
+
+  const snoozeButton = createButton('Snooze', () => dispatchDecision('snooze', { snoozeMinutes: selectedSnoozeMinutes }), {
+    background: '#ffffff',
+    color: '#3c4043',
+    border: '1px solid #5f6368'
+  });
+
+  snoozeRow.appendChild(snoozeLabel);
+  snoozeRow.appendChild(snoozeButton);
+  buttons.appendChild(snoozeRow);
   buttons.appendChild(
     createButton('Ignore this tab (clears on reload)', () => dispatchDecision('ignore-tab'), {
       background: '#ffffff',
@@ -300,7 +337,7 @@ function renderOverlay(payload: ReminderPayload): void {
   intervalHandle = window.setInterval(() => {
     remaining -= 1;
     if (remaining <= 0) {
-      dispatchDecision(autoDecision, { snoozeMinutes: resolvedSnoozeMinutes });
+      dispatchDecision(autoDecision, { snoozeMinutes: selectedSnoozeMinutes });
     } else {
       countdown.textContent = `We will ${payload.action === 'sleep' ? 'sleep this tab' : 'reload this tab'} automatically in ${remaining} seconds.`;
     }
