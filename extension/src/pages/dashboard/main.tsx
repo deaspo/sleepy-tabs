@@ -330,6 +330,7 @@ function DashboardApp(): JSX.Element {
               const memorySample = resolveMemorySample(record, liveState);
               const memoryTrigger = formatMemoryTrigger(record);
               const reasonLabel = formatReasonLabel(record);
+              const memoryNotes = liveState?.memorySampleNotes ?? record.memorySampleNotes;
               return (
                 <li
                   key={`critical-${record.id ?? `${record.tabId}-${record.timestamp}`}`}
@@ -354,6 +355,10 @@ function DashboardApp(): JSX.Element {
                     {memorySample.memorySource === 'probe' && (
                       <div>In-tab heap probes are approximate; the tab process can consume more memory than shown here.</div>
                     )}
+                    {memoryTrigger && (
+                        <div style={{ fontSize: 11, color: '#5f6368', marginTop: 4 }}>{memoryTrigger}</div>
+                      )}
+                    {memoryNotes && <div style={{ marginTop: 6 }}>{memoryNotes}</div>}
                   </div>
                 </li>
               );
@@ -381,6 +386,7 @@ function DashboardApp(): JSX.Element {
                 const liveState = tabStates[record.tabId];
                 const memorySample = resolveMemorySample(record, liveState);
                 const memoryTrigger = formatMemoryTrigger(record);
+                const memoryNotes = liveState?.memorySampleNotes ?? record.memorySampleNotes;
                 return (
                   <tr
                     key={record.id ?? `${record.tabId}-${record.timestamp}`}
@@ -407,6 +413,9 @@ function DashboardApp(): JSX.Element {
                         <div style={{ fontSize: 11, color: '#5f6368', marginTop: 2 }}>
                           In-tab heap probes are approximate; the tab process can consume more memory than shown here.
                         </div>
+                      )}
+                      {memoryNotes && (
+                        <div style={{ fontSize: 11, color: '#d93025', marginTop: 6 }}>{memoryNotes}</div>
                       )}
                     </td>
                     <td style={{ padding: '8px 12px' }}>{record.title ?? 'Untitled'}</td>

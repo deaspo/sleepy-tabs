@@ -1,5 +1,5 @@
 import { STORAGE_KEYS } from '../shared/constants';
-import type { SleepSettings, TabMemoryProbeMessage } from '../shared/types';
+import type { ResampleDebounceMessage, SleepSettings, TabMemoryProbeMessage } from '../shared/types';
 
 const SAMPLE_INTERVAL_MS = 5000;
 const VISIBILITY_SAMPLE_DELAY_MS = 1000;
@@ -17,6 +17,7 @@ interface ChromePerformance extends Performance {
 const perf = performance as ChromePerformance;
 const SETTINGS_KEY = STORAGE_KEYS.settings;
 let allowFullPageSampling = false;
+let resampleDebounceUntil = 0;
 
 function refreshSamplingPreference(): void {
   if (!chrome?.storage?.local) {
@@ -92,6 +93,10 @@ async function publishMeasurement(): Promise<void> {
     return;
   }
 
+  if (Date.now() < resampleDebounceUntil) {
+    return;
+  }
+
   if (!canDispatchRuntimeMessage()) {
     return;
   }
@@ -135,6 +140,16 @@ if (window.top === window && document.contentType !== 'application/pdf') {
     if (document.visibilityState === 'visible') {
       void publishMeasurement();
     }
+  });
+}
+
+if (typeof chrome !== 'undefined' && chrome.runtime?.onMessage) {
+  chrome.runtime.onMessage.addListener((message: unknown) => {
+    const payload = message as ResampleDebounceMessage;
+    if (payload?.type !== 'resample-debounce' || typeof payload.until !== 'number') {
+      return;
+    }
+    resampleDebounceUntil = Math.max(resampleDebounceUntil, payload.until);
   });
 }
 

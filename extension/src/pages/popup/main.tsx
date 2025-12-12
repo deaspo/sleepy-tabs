@@ -13,6 +13,7 @@ interface PopupState {
   fullPageMemoryMb?: number;
   memorySource?: TabMemorySource;
   memoryCapturedAt?: number;
+  memorySampleNotes?: string;
   ignored: boolean;
 }
 
@@ -42,6 +43,7 @@ function PopupApp(): JSX.Element {
             fullPageMemoryMb: tabState?.fullPageMemoryMb,
             memorySource: tabState?.memorySource,
             memoryCapturedAt: tabState?.memoryCapturedAt,
+            memorySampleNotes: tabState?.memorySampleNotes,
             ignored: tabState?.ignored ?? false
           });
         }
@@ -68,7 +70,8 @@ function PopupApp(): JSX.Element {
           heapLimitMb: message.state.heapLimitMb,
           fullPageMemoryMb: message.state.fullPageMemoryMb,
           memorySource: message.state.memorySource,
-          memoryCapturedAt: message.state.memoryCapturedAt
+          memoryCapturedAt: message.state.memoryCapturedAt,
+          memorySampleNotes: message.state.memorySampleNotes
         };
       });
     };
@@ -113,7 +116,8 @@ function PopupApp(): JSX.Element {
               heapLimitMb: updated.heapLimitMb,
               fullPageMemoryMb: updated.fullPageMemoryMb,
               memorySource: updated.memorySource,
-              memoryCapturedAt: updated.memoryCapturedAt
+              memoryCapturedAt: updated.memoryCapturedAt,
+              memorySampleNotes: updated.memorySampleNotes
             }
           : prev
       );
@@ -265,6 +269,11 @@ function PopupApp(): JSX.Element {
           {state.memorySource === 'probe' && (
             <div style={{ marginTop: 4, color: '#5f6368' }}>
               In-tab heap probes are approximate; the tab process can consume more memory than shown here.
+            </div>
+          )}
+          {state.memorySampleNotes === 'probe-saturated' && (
+            <div style={{ marginTop: 4, color: '#5f6368' }}>
+              JS heap usage hit the browser limit. We are using the total heap estimate and retrying with deeper sampling.
             </div>
           )}
           {state.memorySource === 'processes' && (

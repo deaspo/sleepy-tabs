@@ -48,6 +48,7 @@ function ReminderApp(): JSX.Element {
     ? Number(params.get('memoryThresholdMb'))
     : undefined;
   const memoryTarget = (params.get('memoryTarget') ?? undefined) as MemoryActionTarget | undefined;
+  const memorySampleNotes = params.get('memorySampleNotes') ?? undefined;
 
   const remaining = useCountdown(timeoutSeconds, () => {
     notifyReminderDecision(tabId, action, true, reason, {
@@ -56,7 +57,8 @@ function ReminderApp(): JSX.Element {
       fullPageMemoryMb,
       heapLimitMb,
       memoryThresholdMb,
-      memoryTarget
+      memoryTarget,
+      memorySampleNotes
     });
     window.close();
   });
@@ -68,7 +70,8 @@ function ReminderApp(): JSX.Element {
       fullPageMemoryMb,
       heapLimitMb,
       memoryThresholdMb,
-      memoryTarget
+      memoryTarget,
+      memorySampleNotes
     });
     window.close();
   };
@@ -116,6 +119,11 @@ function ReminderApp(): JSX.Element {
           {memorySource === 'probe' && (
             <div style={{ color: '#5f6368', marginTop: 6, fontSize: 12 }}>
               In-tab heap probes are approximate; the tab process can consume more memory than shown here.
+            </div>
+          )}
+          {memorySampleNotes === 'probe-saturated' && (
+            <div style={{ color: '#5f6368', marginTop: 6, fontSize: 12 }}>
+              JS heap usage hit the browser limit. Sleepy Tabs is using the total heap estimate and will capture a deeper sample shortly.
             </div>
           )}
           {typeof memoryThresholdMb === 'number' && (

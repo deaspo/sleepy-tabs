@@ -28,6 +28,8 @@ const SETTINGS_POLL_SECONDS = 30;
 const PROCESS_FALLBACK_INTERVAL_MS = 20000;
 const PROCESS_SAMPLE_REFRESH_MS = 60000;
 const SESSION_RESUME_RESET_THRESHOLD_MS = 60 * 1000;
+const SATURATED_PROBE_RETRY_DELAY_MS = 2000;
+const RESAMPLE_DEBOUNCE_WINDOW_MS = SATURATED_PROBE_RETRY_DELAY_MS * 4;
 
 interface SleepAllResult {
   attempted: number;
@@ -50,8 +52,11 @@ export class SleepManager {
       memoryThresholdMb?: number;
       memoryTarget?: MemoryActionTarget;
       memoryPrompted: boolean;
+      memorySampleNotes?: string;
     }
   >();
+  private saturatedProbeRetries = new Map<number, number>();
+  private saturatedProbeResampleWindows = new Map<number, number>();
 
   async init(): Promise<void> {
     this.settings = await getSettings();
@@ -105,6 +110,7 @@ export class SleepManager {
         overrides.heapLimitMb = existing?.heapLimitMb; // heap limit is static, keep if previously captured
         overrides.memoryCapturedAt = undefined;
         overrides.memorySource = undefined;
+        overrides.memorySampleNotes = undefined;
       }
 
       state[tab.id] = this.composeTabState(tab.id, now, existing, overrides);
@@ -175,8 +181,14 @@ export class SleepManager {
         !isActive && settings.enableAutoSleep && inactivityMs >= inactivityThresholdMs;
 
       const memoryThresholdMb = settings.memoryThresholdMb ?? DEFAULT_MEMORY_THRESHOLD_MB;
-      const memoryUsage = this.resolveTabMemoryUsage(tabInfo) ?? 0;
-      const overMemoryThreshold = memoryUsage > memoryThresholdMb && !tab.discarded;
+      const tabStateIsSaturated = this.isProbeSaturated(tabInfo, memoryThresholdMb);
+      if (tabStateIsSaturated) {
+        await this.requestSaturatedProbeFollowUp(tab.id);
+        tabInfo.memorySampleNotes = 'probe-saturated';
+      }
+      const memoryUsage = this.resolveTabMemoryUsage(tabInfo);
+      const overMemoryThreshold =
+        typeof memoryUsage === 'number' && memoryUsage > memoryThresholdMb && !tab.discarded;
 
       if (overMemoryThreshold) {
         const memoryTarget: MemoryActionTarget = isActive ? 'active' : 'inactive';
@@ -197,7 +209,8 @@ export class SleepManager {
           heapLimitMb: tabInfo.heapLimitMb,
           memoryThresholdMb,
           memoryTarget,
-          memoryPrompted: shouldPrompt
+          memoryPrompted: shouldPrompt,
+          memorySampleNotes: tabInfo.memorySampleNotes
         };
 
         if (shouldPrompt) {
@@ -233,6 +246,7 @@ export class SleepManager {
       memoryThresholdMb?: number;
       memoryTarget?: MemoryActionTarget;
       memoryPrompted?: boolean;
+      memorySampleNotes?: string;
     }
   ): Promise<void> {
     const state = await getTabState();
@@ -268,7 +282,8 @@ export class SleepManager {
             ? this.settings?.memoryThresholdMb ?? DEFAULT_MEMORY_THRESHOLD_MB
             : undefined,
       memoryTarget: metrics?.memoryTarget,
-      memoryPrompted: metrics?.memoryPrompted ?? true
+      memoryPrompted: metrics?.memoryPrompted ?? true,
+      memorySampleNotes: metrics?.memorySampleNotes ?? tabState.memorySampleNotes
     } satisfies {
       totalHeapMb?: number;
       fullPageMemoryMb?: number;
@@ -276,13 +291,15 @@ export class SleepManager {
       memoryThresholdMb?: number;
       memoryTarget?: MemoryActionTarget;
       memoryPrompted?: boolean;
+      memorySampleNotes?: string;
     };
 
     if (reason === 'memory') {
       this.reminderMemoryContext.set(tabId, {
         memoryThresholdMb: reminderMetrics.memoryThresholdMb,
         memoryTarget: reminderMetrics.memoryTarget,
-        memoryPrompted: true
+        memoryPrompted: true,
+        memorySampleNotes: reminderMetrics.memorySampleNotes
       });
     }
 
@@ -298,7 +315,8 @@ export class SleepManager {
         await this.closeExistingReminderWindow(tabId);
         await this.launchStandaloneReminder(tabId, action, reason, reminderMemoryUsage, tabState, {
           memoryThresholdMb: reminderMetrics.memoryThresholdMb,
-          memoryTarget: reminderMetrics.memoryTarget
+          memoryTarget: reminderMetrics.memoryTarget,
+          memorySampleNotes: reminderMetrics.memorySampleNotes
         });
       } catch (fallbackError) {
         console.warn('Standalone reminder failed, proceeding automatically', fallbackError);
@@ -333,7 +351,8 @@ export class SleepManager {
         memorySource: tabState.memorySource,
         memoryCapturedAt: tabState.memoryCapturedAt,
         memoryThresholdMb: reminderMetrics.memoryThresholdMb,
-        memoryTarget: reminderMetrics.memoryTarget
+        memoryTarget: reminderMetrics.memoryTarget,
+        memorySampleNotes: reminderMetrics.memorySampleNotes
       });
     } catch (error) {
       console.warn('Reminder message failed, attempting standalone reminder', error);
@@ -341,7 +360,8 @@ export class SleepManager {
         await this.closeExistingReminderWindow(tabId);
         await this.launchStandaloneReminder(tabId, action, reason, reminderMemoryUsage, tabState, {
           memoryThresholdMb: reminderMetrics.memoryThresholdMb,
-          memoryTarget: reminderMetrics.memoryTarget
+          memoryTarget: reminderMetrics.memoryTarget,
+          memorySampleNotes: reminderMetrics.memorySampleNotes
         });
       } catch (fallbackError) {
         console.warn('Standalone reminder failed, proceeding automatically', fallbackError);
@@ -369,7 +389,8 @@ export class SleepManager {
     fullPageMemoryMb?: number,
     heapLimitMb?: number,
     memoryThresholdMb?: number,
-    memoryTarget?: MemoryActionTarget
+    memoryTarget?: MemoryActionTarget,
+    memorySampleNotes?: string
   ): Promise<void> {
     const state = await getTabState();
     let tabState = state[tabId];
@@ -398,7 +419,8 @@ export class SleepManager {
         ? {
             memoryThresholdMb,
             memoryTarget,
-            memoryPrompted: true
+            memoryPrompted: true,
+            memorySampleNotes
           }
         : undefined);
 
@@ -409,7 +431,8 @@ export class SleepManager {
         heapLimitMb,
         memoryThresholdMb: context?.memoryThresholdMb,
         memoryTarget: context?.memoryTarget,
-        memoryPrompted: context?.memoryPrompted ?? true
+        memoryPrompted: context?.memoryPrompted ?? true,
+        memorySampleNotes: context?.memorySampleNotes ?? memorySampleNotes
       });
     }
   }
@@ -427,6 +450,7 @@ export class SleepManager {
       memoryThresholdMb?: number;
       memoryTarget?: MemoryActionTarget;
       memoryPrompted?: boolean;
+      memorySampleNotes?: string;
     }
   ): Promise<void> {
     const stateSnapshot = await getTabState();
@@ -464,7 +488,8 @@ export class SleepManager {
       critical: reason === 'memory',
       memoryThresholdMb: metrics?.memoryThresholdMb,
       memoryTarget: metrics?.memoryTarget,
-      memoryPrompted: metrics?.memoryPrompted
+      memoryPrompted: metrics?.memoryPrompted,
+      memorySampleNotes: metrics?.memorySampleNotes ?? tabState?.memorySampleNotes
     });
   }
 
@@ -524,11 +549,28 @@ export class SleepManager {
     }
     tabState.processFallbackThresholdMb =
       sample.source === 'processes' ? this.settings?.processFallbackThresholdMb : undefined;
+    const thresholdForSaturation = this.settings?.memoryThresholdMb ?? DEFAULT_MEMORY_THRESHOLD_MB;
+    if (this.isProbeSaturated(tabState, thresholdForSaturation)) {
+      tabState.memorySampleNotes = 'probe-saturated';
+    } else {
+      tabState.memorySampleNotes = undefined;
+      this.saturatedProbeRetries.delete(tabId);
+    }
     if (!tabState.lastSeenAt) {
       tabState.lastSeenAt = Date.now();
     }
     await setTabState(state);
     this.broadcastTabStateUpdate(tabId, tabState);
+    const hadResampleWindow = this.saturatedProbeResampleWindows.delete(tabId);
+    if (hadResampleWindow) {
+      void chrome.tabs
+        .sendMessage(tabId, {
+          type: 'resample-debounce',
+          tabId,
+          until: Date.now()
+        })
+        .catch(() => undefined);
+    }
   }
 
   async handleManualAction(tabId: number, action: SleepAction): Promise<void> {
@@ -761,6 +803,7 @@ export class SleepManager {
       fullPageMemoryMb: existing?.fullPageMemoryMb,
       memorySource: existing?.memorySource,
       memoryCapturedAt: existing?.memoryCapturedAt,
+      memorySampleNotes: existing?.memorySampleNotes,
       processId: existing?.processId,
       processSampledAt: existing?.processSampledAt,
       processFallbackThresholdMb: existing?.processFallbackThresholdMb,
@@ -778,12 +821,63 @@ export class SleepManager {
     const candidates = [
       tabState.totalHeapMb,
       tabState.fullPageMemoryMb,
-      tabState.memoryUsageMb
+      this.isProbeSaturated(tabState) ? undefined : tabState.memoryUsageMb
     ].filter((value): value is number => typeof value === 'number' && value > 0);
     if (candidates.length > 0) {
       return Math.max(...candidates);
     }
-    return tabState.heapLimitMb ?? tabState.memoryUsageMb ?? tabState.totalHeapMb ?? undefined;
+    if (!this.isProbeSaturated(tabState)) {
+      return tabState.heapLimitMb ?? tabState.memoryUsageMb ?? tabState.totalHeapMb ?? undefined;
+    }
+    return undefined;
+  }
+
+  private isProbeSaturated(tabState: TabState, thresholdMb?: number): boolean {
+    if (tabState.memorySource !== 'probe') {
+      return false;
+    }
+    const memoryUsage = tabState.memoryUsageMb;
+    const heapLimit = tabState.heapLimitMb;
+    if (typeof memoryUsage !== 'number' || typeof heapLimit !== 'number') {
+      return false;
+    }
+    if (Math.abs(memoryUsage - heapLimit) > 0.01) {
+      return false;
+    }
+    if (typeof thresholdMb === 'number' && typeof tabState.totalHeapMb === 'number') {
+      return tabState.totalHeapMb < thresholdMb;
+    }
+    return true;
+  }
+
+  private async requestSaturatedProbeFollowUp(tabId: number): Promise<void> {
+    const now = Date.now();
+    const resampleWindowUntil = this.saturatedProbeResampleWindows.get(tabId);
+    if (typeof resampleWindowUntil === 'number' && now < resampleWindowUntil) {
+      return;
+    }
+    if (typeof resampleWindowUntil === 'number' && now >= resampleWindowUntil) {
+      this.saturatedProbeResampleWindows.delete(tabId);
+    }
+    const nextAllowed = this.saturatedProbeRetries.get(tabId) ?? 0;
+    if (now < nextAllowed) {
+      return;
+    }
+    const debounceUntil = now + RESAMPLE_DEBOUNCE_WINDOW_MS;
+    this.saturatedProbeRetries.set(tabId, now + SATURATED_PROBE_RETRY_DELAY_MS * 2);
+    this.saturatedProbeResampleWindows.set(tabId, debounceUntil);
+    void chrome.tabs
+      .sendMessage(tabId, {
+        type: 'resample-debounce',
+        tabId,
+        until: debounceUntil
+      })
+      .catch(() => undefined);
+    setTimeout(() => {
+      chrome.runtime
+        .sendMessage({ type: 'resample-tab-memory', tabId })
+        .catch(() => undefined);
+    }, SATURATED_PROBE_RETRY_DELAY_MS);
   }
 
   setProcessFallbackSupport(report: CapabilityReport): void {
@@ -865,6 +959,7 @@ export class SleepManager {
       memoryThresholdMb?: number;
       memoryTarget?: MemoryActionTarget;
       memoryPrompted?: boolean;
+      memorySampleNotes?: string;
     }
   ): void {
     const timeoutSeconds = this.settings?.reminderTimeoutSeconds ?? DEFAULT_REMINDER_TIMEOUT_SECONDS;
@@ -906,6 +1001,7 @@ export class SleepManager {
       memoryThresholdMb?: number;
       memoryTarget?: MemoryActionTarget;
       memoryPrompted?: boolean;
+      memorySampleNotes?: string;
     }
   ): Promise<void> {
     this.reminderTimeouts.delete(tabId);
@@ -925,7 +1021,8 @@ export class SleepManager {
       heapLimitMb: metrics.heapLimitMb ?? tabState?.heapLimitMb,
       memoryThresholdMb: context?.memoryThresholdMb ?? metrics.memoryThresholdMb,
       memoryTarget: context?.memoryTarget ?? metrics.memoryTarget,
-      memoryPrompted: context?.memoryPrompted ?? metrics.memoryPrompted ?? true
+      memoryPrompted: context?.memoryPrompted ?? metrics.memoryPrompted ?? true,
+      memorySampleNotes: context?.memorySampleNotes ?? metrics.memorySampleNotes
     };
     const resolvedMemoryUsage =
       typeof memoryUsageMb === 'number' ? memoryUsageMb : this.resolveTabMemoryUsage(tabState);
@@ -941,6 +1038,7 @@ export class SleepManager {
     metrics?: {
       memoryThresholdMb?: number;
       memoryTarget?: MemoryActionTarget;
+      memorySampleNotes?: string;
     }
   ): Promise<void> {
     const reminderUrl = new URL(chrome.runtime.getURL('src/pages/reminder/index.html'));
@@ -977,6 +1075,9 @@ export class SleepManager {
     }
     if (metrics?.memoryTarget) {
       reminderUrl.searchParams.set('memoryTarget', metrics.memoryTarget);
+    }
+    if (metrics?.memorySampleNotes) {
+      reminderUrl.searchParams.set('memorySampleNotes', metrics.memorySampleNotes);
     }
 
     await new Promise<void>((resolve, reject) => {

@@ -558,6 +558,17 @@ chrome.runtime.onMessage.addListener((message: RuntimeMessage, sender, sendRespo
     return false;
   }
 
+  if (message.type === 'resample-tab-memory') {
+    if (typeof message.tabId === 'number') {
+      void collectTabMemoryViaScripting(message.tabId).then((success) => {
+        if (!success) {
+          void collectTabMemoryViaDebugger(message.tabId);
+        }
+      });
+    }
+    return false;
+  }
+
   if (message.type === 'focus-tab') {
     const focusMessage = message as FocusTabMessage;
     void bringTabToFront(focusMessage)
@@ -596,7 +607,8 @@ chrome.runtime.onMessage.addListener((message: RuntimeMessage, sender, sendRespo
         reminder.fullPageMemoryMb,
         reminder.heapLimitMb,
         reminder.memoryThresholdMb,
-        reminder.memoryTarget
+        reminder.memoryTarget,
+        reminder.memorySampleNotes
       )
       .then(() => sendResponse({ success: true }));
     return true;

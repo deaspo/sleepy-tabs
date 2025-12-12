@@ -44,6 +44,7 @@ export interface TabState {
   fullPageMemoryMb?: number;
   memorySource?: TabMemorySource;
   memoryCapturedAt?: number;
+  memorySampleNotes?: string;
   processId?: number;
   processSampledAt?: number;
   processFallbackThresholdMb?: number;
@@ -70,6 +71,7 @@ export interface TabTelemetryRecord {
   memoryThresholdMb?: number;
   memoryTarget?: MemoryActionTarget;
   memoryPrompted?: boolean;
+  memorySampleNotes?: string;
 }
 
 export type CompanionInboundMessage =
@@ -165,6 +167,7 @@ export interface ReminderDecisionMessage {
   heapLimitMb?: number;
   memoryThresholdMb?: number;
   memoryTarget?: MemoryActionTarget;
+  memorySampleNotes?: string;
 }
 
 export interface ManualActionMessage {
@@ -195,6 +198,17 @@ export interface TabMemorySample {
   fullPageMemoryMb?: number;
   source: TabMemorySource;
   processId?: number;
+}
+
+export interface ResampleTabMemoryMessage {
+  type: 'resample-tab-memory';
+  tabId: number;
+}
+
+export interface ResampleDebounceMessage {
+  type: 'resample-debounce';
+  tabId: number;
+  until: number;
 }
 
 export interface TabStateUpdatedMessage {
@@ -238,5 +252,7 @@ export type RuntimeMessage =
   | SleepAllTabsMessage
   | NativeHostStatusMessage
   | TabMemoryProbeMessage
+  | ResampleTabMemoryMessage
+  | ResampleDebounceMessage
   | CapabilitiesRequestMessage
   | PingMessage;

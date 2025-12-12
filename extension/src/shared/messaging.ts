@@ -112,6 +112,7 @@ export function notifyReminderDecision(
     fullPageMemoryMb?: number;
     memoryThresholdMb?: number;
     memoryTarget?: MemoryActionTarget;
+    memorySampleNotes?: string;
   }
 ): void {
   chrome.runtime.sendMessage({

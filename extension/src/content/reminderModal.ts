@@ -15,6 +15,7 @@ type ReminderPayload = {
   memoryCapturedAt?: number;
   memoryThresholdMb?: number;
   memoryTarget?: MemoryActionTarget;
+  memorySampleNotes?: string;
 };
 
 const OVERLAY_ID = 'sleepy-tabs-reminder-overlay';
@@ -140,6 +141,15 @@ function renderOverlay(payload: ReminderPayload): void {
       metricsContainer.appendChild(probeNote);
     }
 
+    if (payload.memorySampleNotes === 'probe-saturated') {
+      const saturatedNote = document.createElement('div');
+      saturatedNote.style.marginTop = '8px';
+      saturatedNote.style.color = '#5f6368';
+      saturatedNote.style.fontSize = '12px';
+      saturatedNote.textContent = 'JS heap usage hit the browser limit, so Sleepy Tabs is using the total heap estimate and will retry sampling.';
+      metricsContainer.appendChild(saturatedNote);
+    }
+
     if (typeof payload.memoryThresholdMb === 'number') {
       const thresholdMeta = document.createElement('div');
       thresholdMeta.style.marginTop = '8px';
@@ -209,7 +219,8 @@ function renderOverlay(payload: ReminderPayload): void {
         heapLimitMb: payload.heapLimitMb,
         fullPageMemoryMb: payload.fullPageMemoryMb,
         memoryThresholdMb: payload.memoryThresholdMb,
-        memoryTarget: payload.memoryTarget
+        memoryTarget: payload.memoryTarget,
+        memorySampleNotes: payload.memorySampleNotes
       });
     } else {
       countdown.textContent = `Taking action in ${remaining} seconds...`;
@@ -225,7 +236,8 @@ function renderOverlay(payload: ReminderPayload): void {
       heapLimitMb: payload.heapLimitMb,
       fullPageMemoryMb: payload.fullPageMemoryMb,
       memoryThresholdMb: payload.memoryThresholdMb,
-      memoryTarget: payload.memoryTarget
+        memoryTarget: payload.memoryTarget,
+        memorySampleNotes: payload.memorySampleNotes
     });
   };
 
