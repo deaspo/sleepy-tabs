@@ -207,9 +207,11 @@ function renderOverlay(payload: ReminderPayload): void {
     }
     removeOverlay();
     const snoozeMinutes = extras?.snoozeMinutes ?? selectedSnoozeMinutes;
-    notifyReminderDecision(payload.tabId, payload.action, decision, payload.reason, {
+    void notifyReminderDecision(payload.tabId, payload.action, decision, payload.reason, {
       ...commonMetrics,
       snoozeMinutes: snoozeMinutes > 0 ? snoozeMinutes : undefined
+    }).catch((error) => {
+      console.warn('Sleepy Tabs: reminder decision delivery failed', error);
     });
   };
 

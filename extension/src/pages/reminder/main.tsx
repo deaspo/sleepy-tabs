@@ -66,6 +66,7 @@ function ReminderApp(): JSX.Element {
       .sort((a, b) => a - b);
   }, [defaultSnoozeMinutes]);
   const [selectedSnoozeMinutes, setSelectedSnoozeMinutes] = useState<number>(defaultSnoozeMinutes);
+  const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
 
   useEffect(() => {
     setSelectedSnoozeMinutes(defaultSnoozeMinutes);
@@ -81,19 +82,28 @@ function ReminderApp(): JSX.Element {
     memorySampleNotes
   };
 
-  const sendDecision = (decision: ReminderDecisionOption, extras?: { snoozeMinutes?: number }) => {
+  const handleDecision = (decision: ReminderDecisionOption, extras?: { snoozeMinutes?: number }) => {
+    if (isSubmitting) {
+      return;
+    }
+    setIsSubmitting(true);
     const snoozeMinutes = extras?.snoozeMinutes ?? selectedSnoozeMinutes;
-    notifyReminderDecision(tabId, action, decision, reason, {
+    void notifyReminderDecision(tabId, action, decision, reason, {
       ...commonMetrics,
       snoozeMinutes: snoozeMinutes > 0 ? snoozeMinutes : undefined
-    });
-    window.close();
+    })
+      .catch((error) => {
+        console.warn('Failed to deliver reminder decision', error);
+      })
+      .finally(() => {
+        window.close();
+      });
   };
 
   const autoDecision: ReminderDecisionOption = action === 'sleep' ? 'sleep-now' : 'reload-now';
 
   const remaining = useCountdown(timeoutSeconds, () =>
-    sendDecision(autoDecision, { snoozeMinutes: selectedSnoozeMinutes })
+    handleDecision(autoDecision, { snoozeMinutes: selectedSnoozeMinutes })
   );
 
   const primaryActionLabel = action === 'sleep' ? 'Sleep now' : 'Reload now';
@@ -167,14 +177,17 @@ function ReminderApp(): JSX.Element {
       <div style={{ display: 'grid', gap: 10, marginTop: 16 }}>
         <button
           type="button"
-          onClick={() => sendDecision('keep-active')}
+          onClick={() => handleDecision('keep-active')}
+          disabled={isSubmitting}
           style={{
             padding: '10px 16px',
             borderRadius: 6,
             border: '1px solid #1a73e8',
             background: '#fff',
             color: '#1a73e8',
-            fontWeight: 600
+            fontWeight: 600,
+            cursor: isSubmitting ? 'not-allowed' : 'pointer',
+            opacity: isSubmitting ? 0.75 : 1
           }}
         >
           Keep tab active
@@ -192,11 +205,14 @@ function ReminderApp(): JSX.Element {
             <select
               value={selectedSnoozeMinutes}
               onChange={(event) => setSelectedSnoozeMinutes(Number(event.target.value))}
+              disabled={isSubmitting}
               style={{
                 padding: '6px 10px',
                 borderRadius: 6,
                 border: '1px solid #5f6368',
-                fontSize: 14
+                fontSize: 14,
+                cursor: isSubmitting ? 'not-allowed' : 'pointer',
+                opacity: isSubmitting ? 0.75 : 1
               }}
             >
               {snoozeOptions.map((minutes) => (
@@ -208,13 +224,16 @@ function ReminderApp(): JSX.Element {
           </label>
           <button
             type="button"
-            onClick={() => sendDecision('snooze', { snoozeMinutes: selectedSnoozeMinutes })}
+            onClick={() => handleDecision('snooze', { snoozeMinutes: selectedSnoozeMinutes })}
+            disabled={isSubmitting}
             style={{
               padding: '10px 16px',
               borderRadius: 6,
               border: '1px solid #5f6368',
               background: '#fff',
-              color: '#3c4043'
+              color: '#3c4043',
+              cursor: isSubmitting ? 'not-allowed' : 'pointer',
+              opacity: isSubmitting ? 0.75 : 1
             }}
           >
             Snooze
@@ -222,40 +241,49 @@ function ReminderApp(): JSX.Element {
         </div>
         <button
           type="button"
-          onClick={() => sendDecision('ignore-tab')}
+          onClick={() => handleDecision('ignore-tab')}
+          disabled={isSubmitting}
           style={{
             padding: '10px 16px',
             borderRadius: 6,
             border: '1px solid #dadce0',
             background: '#fff',
-            color: '#3c4043'
+            color: '#3c4043',
+            cursor: isSubmitting ? 'not-allowed' : 'pointer',
+            opacity: isSubmitting ? 0.75 : 1
           }}
         >
           Ignore this tab (clears on reload)
         </button>
         <button
           type="button"
-          onClick={() => sendDecision(autoDecision)}
+          onClick={() => handleDecision(autoDecision)}
+          disabled={isSubmitting}
           style={{
             padding: '10px 16px',
             borderRadius: 6,
             border: 'none',
             background: '#1a73e8',
             color: '#fff',
-            fontWeight: 600
+            fontWeight: 600,
+            cursor: isSubmitting ? 'not-allowed' : 'pointer',
+            opacity: isSubmitting ? 0.75 : 1
           }}
         >
           {primaryActionLabel}
         </button>
         <button
           type="button"
-          onClick={() => sendDecision(secondaryDecision)}
+          onClick={() => handleDecision(secondaryDecision)}
+          disabled={isSubmitting}
           style={{
             padding: '10px 16px',
             borderRadius: 6,
             border: '1px solid #1a1a1a',
             background: '#fff',
-            color: '#1a1a1a'
+            color: '#1a1a1a',
+            cursor: isSubmitting ? 'not-allowed' : 'pointer',
+            opacity: isSubmitting ? 0.75 : 1
           }}
         >
           {secondaryActionLabel}

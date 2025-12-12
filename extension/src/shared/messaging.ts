@@ -117,7 +117,7 @@ export function notifyReminderDecision(
     memorySampleNotes?: string;
     snoozeMinutes?: number;
   }
-): void {
+): Promise<void> {
   const payload = {
     type: 'reminder-decision' as const,
     tabId,
@@ -134,5 +134,22 @@ export function notifyReminderDecision(
     snoozeMinutes: metrics?.snoozeMinutes
   } satisfies ReminderDecisionMessage;
 
-  chrome.runtime.sendMessage(payload);
+  return new Promise((resolve, reject) => {
+    chrome.runtime.sendMessage(payload, () => {
+      const error = chrome.runtime.lastError;
+      if (error) {
+        const message = error.message ?? String(error);
+        if (
+          message.includes('Receiving end does not exist') ||
+          message.includes('The message port closed before a response was received')
+        ) {
+          resolve();
+          return;
+        }
+        reject(new Error(message));
+        return;
+      }
+      resolve();
+    });
+  });
 }
