@@ -170,6 +170,8 @@ function DashboardApp(): JSX.Element {
   const [searchTerm, setSearchTerm] = useState('');
   const [actionFilter, setActionFilter] = useState<'all' | TabTelemetryRecord['action']>('all');
   const [reasonFilter, setReasonFilter] = useState<'all' | string>('all');
+  const [criticalCollapsed, setCriticalCollapsed] = useState(false);
+  const [recentCollapsed, setRecentCollapsed] = useState(false);
   const criticalListRef = useRef<HTMLUListElement | null>(null);
   const recentActionsRef = useRef<HTMLDivElement | null>(null);
   const migrationToastRef = useRef('');
@@ -288,6 +290,16 @@ function DashboardApp(): JSX.Element {
     [tabStates]
   );
 
+  const toggleCriticalCollapsed = useCallback(() => {
+    setCriticalCollapsed((current) => !current);
+    setLayoutVersion((value) => value + 1);
+  }, []);
+
+  const toggleRecentCollapsed = useCallback(() => {
+    setRecentCollapsed((current) => !current);
+    setLayoutVersion((value) => value + 1);
+  }, []);
+
   const availableActions = useMemo(() => {
     const actions = new Set<TabTelemetryRecord['action']>();
     records.forEach((record) => actions.add(record.action));
@@ -330,42 +342,50 @@ function DashboardApp(): JSX.Element {
   );
 
   useLayoutEffect(() => {
-    const listElement = criticalListRef.current;
-    if (listElement) {
-      const items = Array.from(listElement.children) as HTMLElement[];
-      if (items.length > MAX_VISIBLE_CRITICAL_ITEMS) {
-        const visibleItems = items.slice(0, MAX_VISIBLE_CRITICAL_ITEMS);
-        const totalHeight = visibleItems.reduce((sum, item) => sum + item.getBoundingClientRect().height, 0);
-        const computedStyle = window.getComputedStyle(listElement);
-        const gapValue = Number.parseFloat(computedStyle.rowGap || computedStyle.gap || '0') || 0;
-        const newHeight = Math.ceil(totalHeight + gapValue * (visibleItems.length - 1));
-        setCriticalListMaxHeight((current) => (current === newHeight ? current : newHeight));
+    if (criticalCollapsed) {
+      setCriticalListMaxHeight((current) => (current === null ? current : null));
+    } else {
+      const listElement = criticalListRef.current;
+      if (listElement) {
+        const items = Array.from(listElement.children) as HTMLElement[];
+        if (items.length > MAX_VISIBLE_CRITICAL_ITEMS) {
+          const visibleItems = items.slice(0, MAX_VISIBLE_CRITICAL_ITEMS);
+          const totalHeight = visibleItems.reduce((sum, item) => sum + item.getBoundingClientRect().height, 0);
+          const computedStyle = window.getComputedStyle(listElement);
+          const gapValue = Number.parseFloat(computedStyle.rowGap || computedStyle.gap || '0') || 0;
+          const newHeight = Math.ceil(totalHeight + gapValue * (visibleItems.length - 1));
+          setCriticalListMaxHeight((current) => (current === newHeight ? current : newHeight));
+        } else {
+          setCriticalListMaxHeight((current) => (current === null ? current : null));
+        }
       } else {
         setCriticalListMaxHeight((current) => (current === null ? current : null));
       }
-    } else {
-      setCriticalListMaxHeight((current) => (current === null ? current : null));
     }
 
-    const recentContainer = recentActionsRef.current;
-    if (recentContainer) {
-      const table = recentContainer.querySelector('table');
-      if (table) {
-        const headerHeight = table.querySelector('thead')?.getBoundingClientRect().height ?? 0;
-        const rows = Array.from(table.querySelectorAll('tbody tr')) as HTMLElement[];
-        if (rows.length > MAX_VISIBLE_RECENT_ACTION_ROWS) {
-          const visibleRows = rows.slice(0, MAX_VISIBLE_RECENT_ACTION_ROWS);
-          const rowsHeight = visibleRows.reduce((sum, row) => sum + row.getBoundingClientRect().height, 0);
-          const newHeight = Math.ceil(headerHeight + rowsHeight);
-          setRecentActionsMaxHeight((current) => (current === newHeight ? current : newHeight));
-        } else {
-          setRecentActionsMaxHeight((current) => (current === null ? current : null));
-        }
-      }
-    } else {
+    if (recentCollapsed) {
       setRecentActionsMaxHeight((current) => (current === null ? current : null));
+    } else {
+      const recentContainer = recentActionsRef.current;
+      if (recentContainer) {
+        const table = recentContainer.querySelector('table');
+        if (table) {
+          const headerHeight = table.querySelector('thead')?.getBoundingClientRect().height ?? 0;
+          const rows = Array.from(table.querySelectorAll('tbody tr')) as HTMLElement[];
+          if (rows.length > MAX_VISIBLE_RECENT_ACTION_ROWS) {
+            const visibleRows = rows.slice(0, MAX_VISIBLE_RECENT_ACTION_ROWS);
+            const rowsHeight = visibleRows.reduce((sum, row) => sum + row.getBoundingClientRect().height, 0);
+            const newHeight = Math.ceil(headerHeight + rowsHeight);
+            setRecentActionsMaxHeight((current) => (current === newHeight ? current : newHeight));
+          } else {
+            setRecentActionsMaxHeight((current) => (current === null ? current : null));
+          }
+        }
+      } else {
+        setRecentActionsMaxHeight((current) => (current === null ? current : null));
+      }
     }
-  }, [criticalRecords, filteredRecords, layoutVersion]);
+  }, [criticalRecords, filteredRecords, layoutVersion, criticalCollapsed, recentCollapsed]);
 
   const hasFiltersApplied = searchTerm.trim() !== '' || actionFilter !== 'all' || reasonFilter !== 'all';
 
@@ -508,9 +528,36 @@ function DashboardApp(): JSX.Element {
       </section>
 
       <section style={{ marginBottom: 32 }}>
-        <h2 style={{ fontSize: 18 }}>Critical tabs</h2>
-        {criticalRecords.length === 0 ? (
-          <p style={{ color: '#555' }}>
+        <div
+          style={{
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            gap: 12
+          }}
+        >
+          <h2 style={{ fontSize: 18, margin: 0 }}>Critical tabs</h2>
+          <button
+            type="button"
+            onClick={toggleCriticalCollapsed}
+            aria-expanded={!criticalCollapsed}
+            style={{
+              padding: '4px 10px',
+              borderRadius: 4,
+              border: '1px solid #1a73e8',
+              background: criticalCollapsed ? '#fff' : '#1a73e8',
+              color: criticalCollapsed ? '#1a73e8' : '#fff',
+              fontSize: 12,
+              cursor: 'pointer'
+            }}
+          >
+            {criticalCollapsed ? 'Expand' : 'Collapse'}
+          </button>
+        </div>
+        {criticalCollapsed ? (
+          <p style={{ color: '#555', marginTop: 12 }}>Section hidden. Select “Expand” to view critical tabs.</p>
+        ) : criticalRecords.length === 0 ? (
+          <p style={{ color: '#555', marginTop: 12 }}>
             {hasFiltersApplied
               ? 'No critical tabs match the current filters.'
               : 'All clear. Recent activity looks healthy.'}
@@ -521,7 +568,8 @@ function DashboardApp(): JSX.Element {
             style={{
               listStyle: 'none',
               padding: 0,
-              margin: 0,
+              margin: 12,
+              marginLeft: 0,
               display: 'grid',
               gap: 12,
               maxHeight: criticalListMaxHeight !== null ? `${criticalListMaxHeight}px` : undefined,
@@ -554,6 +602,7 @@ function DashboardApp(): JSX.Element {
                       textOverflow: 'ellipsis',
                       whiteSpace: 'nowrap'
                     }}
+                    title={record.url ?? undefined}
                   >
                     {record.url}
                   </p>
@@ -582,103 +631,133 @@ function DashboardApp(): JSX.Element {
       </section>
 
       <section>
-        <h2 style={{ fontSize: 18 }}>Recent actions</h2>
         <div
-          ref={recentActionsRef}
           style={{
-            overflowX: 'auto',
-            overflowY: recentActionsMaxHeight !== null ? 'auto' : undefined,
-            maxHeight: recentActionsMaxHeight !== null ? `${recentActionsMaxHeight}px` : undefined,
-            paddingRight: recentActionsMaxHeight !== null ? 4 : undefined
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            gap: 12
           }}
         >
-          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-            <thead>
-              <tr style={{ textAlign: 'left', borderBottom: '2px solid #e0e0e0' }}>
-                <th style={{ padding: '8px 12px' }}>Time</th>
-                <th style={{ padding: '8px 12px' }}>Action</th>
-                <th style={{ padding: '8px 12px' }}>Reason</th>
-                <th style={{ padding: '8px 12px' }}>Memory</th>
-                <th style={{ padding: '8px 12px' }}>Title</th>
-                <th style={{ padding: '8px 12px' }}>Bring to front</th>
-              </tr>
-            </thead>
-            <tbody>
-              {filteredRecords.length === 0 ? (
-                <tr>
-                  <td colSpan={6} style={{ padding: '12px', textAlign: 'center', color: '#5f6368', fontSize: 13 }}>
-                    {hasFiltersApplied
-                      ? 'No recent actions match the current filters.'
-                      : 'No recent actions logged yet.'}
-                  </td>
+          <h2 style={{ fontSize: 18, margin: 0 }}>Recent actions</h2>
+          <button
+            type="button"
+            onClick={toggleRecentCollapsed}
+            aria-expanded={!recentCollapsed}
+            style={{
+              padding: '4px 10px',
+              borderRadius: 4,
+              border: '1px solid #1a73e8',
+              background: recentCollapsed ? '#fff' : '#1a73e8',
+              color: recentCollapsed ? '#1a73e8' : '#fff',
+              fontSize: 12,
+              cursor: 'pointer'
+            }}
+          >
+            {recentCollapsed ? 'Expand' : 'Collapse'}
+          </button>
+        </div>
+        {recentCollapsed ? (
+          <p style={{ color: '#555', marginTop: 12 }}>Section hidden. Select “Expand” to review recent actions.</p>
+        ) : (
+          <div
+            ref={recentActionsRef}
+            style={{
+              overflowX: 'auto',
+              overflowY: recentActionsMaxHeight !== null ? 'auto' : undefined,
+              maxHeight: recentActionsMaxHeight !== null ? `${recentActionsMaxHeight}px` : undefined,
+              paddingRight: recentActionsMaxHeight !== null ? 4 : undefined,
+              marginTop: 12
+            }}
+          >
+            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+              <thead>
+                <tr style={{ textAlign: 'left', borderBottom: '2px solid #e0e0e0' }}>
+                  <th style={{ padding: '8px 12px' }}>Time</th>
+                  <th style={{ padding: '8px 12px' }}>Action</th>
+                  <th style={{ padding: '8px 12px' }}>Reason</th>
+                  <th style={{ padding: '8px 12px' }}>Memory</th>
+                  <th style={{ padding: '8px 12px' }}>Title</th>
+                  <th style={{ padding: '8px 12px' }}>Bring to front</th>
                 </tr>
-              ) : (
-                filteredRecords.map((record) => {
-                const liveState = tabStates[record.tabId];
-                const memorySample = resolveMemorySample(record, liveState);
-                const memoryTrigger = formatMemoryTrigger(record);
-                const memoryNotes = liveState?.memorySampleNotes ?? record.memorySampleNotes;
-                return (
-                  <tr
-                    key={record.id ?? `${record.tabId}-${record.timestamp}`}
-                    style={{ borderBottom: '1px solid #f0f0f0' }}
-                  >
-                    <td style={{ padding: '8px 12px', whiteSpace: 'nowrap' }}>{formatTime(record.timestamp)}</td>
-                    <td style={{ padding: '8px 12px', textTransform: 'capitalize' }}>{record.action}</td>
-                    <td style={{ padding: '8px 12px' }}>
-                      <div>{formatReasonLabel(record)}</div>
-                      {memoryTrigger && (
-                        <div style={{ fontSize: 11, color: '#5f6368', marginTop: 4 }}>{memoryTrigger}</div>
-                      )}
-                    </td>
-                    <td style={{ padding: '8px 12px' }}>
-                      {memoryMetricLines(memorySample).map((line, index) => (
-                        <div key={`${record.id ?? record.tabId}-recent-${index}`}>{line}</div>
-                      ))}
-                      {formatMemoryDetail(memorySample) && (
-                        <div style={{ fontSize: 11, color: '#5f6368', marginTop: 4 }}>
-                          {formatMemoryDetail(memorySample)}
-                        </div>
-                      )}
-                      {/* {memorySample.memorySource === 'probe' && (
-                        <div style={{ fontSize: 11, color: '#5f6368', marginTop: 2 }}>
-                          In-tab heap probes are approximate; the tab process can consume more memory than shown here.
-                        </div>
-                      )} */}
-                      {memoryNotes && (
-                        <div style={{ fontSize: 11, color: '#d93025', marginTop: 6 }}>{memoryNotes}</div>
-                      )}
-                    </td>
-                    <td style={{ padding: '8px 12px' }}>{record.title ?? 'Untitled'}</td>
-                    <td style={{ padding: '8px 12px' }}>
-                      {canBringTabToFront(record, tabStates[record.tabId]) ? (
-                        <button
-                          type="button"
-                          onClick={() => handleBringToFront(record)}
-                          disabled={pendingFocusTabId === record.tabId}
-                          style={{
-                            fontSize: 12,
-                            padding: '6px 10px',
-                            borderRadius: 4,
-                            border: '1px solid #1a73e8',
-                            background: pendingFocusTabId === record.tabId ? '#e8f0fe' : '#1a73e8',
-                            color: pendingFocusTabId === record.tabId ? '#1a73e8' : '#fff',
-                            cursor: pendingFocusTabId === record.tabId ? 'not-allowed' : 'pointer'
-                          }}
-                        >
-                          {pendingFocusTabId === record.tabId ? 'Focusing…' : 'Bring to front'}
-                        </button>
-                      ) : (
-                        <span style={{ color: '#8a8a8a' }}>—</span>
-                      )}
+              </thead>
+              <tbody>
+                {filteredRecords.length === 0 ? (
+                  <tr>
+                    <td colSpan={6} style={{ padding: '12px', textAlign: 'center', color: '#5f6368', fontSize: 13 }}>
+                      {hasFiltersApplied
+                        ? 'No recent actions match the current filters.'
+                        : 'No recent actions logged yet.'}
                     </td>
                   </tr>
-                );
-              })
-              )}
-            </tbody>
-          </table>
-        </div>
+                ) : (
+                  filteredRecords.map((record) => {
+                    const liveState = tabStates[record.tabId];
+                    const memorySample = resolveMemorySample(record, liveState);
+                    const memoryTrigger = formatMemoryTrigger(record);
+                    const memoryNotes = liveState?.memorySampleNotes ?? record.memorySampleNotes;
+                    return (
+                      <tr
+                        key={record.id ?? `${record.tabId}-${record.timestamp}`}
+                        style={{ borderBottom: '1px solid #f0f0f0' }}
+                      >
+                        <td style={{ padding: '8px 12px', whiteSpace: 'nowrap' }}>{formatTime(record.timestamp)}</td>
+                        <td style={{ padding: '8px 12px', textTransform: 'capitalize' }}>{record.action}</td>
+                        <td style={{ padding: '8px 12px' }}>
+                          <div>{formatReasonLabel(record)}</div>
+                          {memoryTrigger && (
+                            <div style={{ fontSize: 11, color: '#5f6368', marginTop: 4 }}>{memoryTrigger}</div>
+                          )}
+                        </td>
+                        <td style={{ padding: '8px 12px' }}>
+                          {memoryMetricLines(memorySample).map((line, index) => (
+                            <div key={`${record.id ?? record.tabId}-recent-${index}`}>{line}</div>
+                          ))}
+                          {formatMemoryDetail(memorySample) && (
+                            <div style={{ fontSize: 11, color: '#5f6368', marginTop: 4 }}>
+                              {formatMemoryDetail(memorySample)}
+                            </div>
+                          )}
+                          {/* {memorySample.memorySource === 'probe' && (
+                            <div style={{ fontSize: 11, color: '#5f6368', marginTop: 2 }}>
+                              In-tab heap probes are approximate; the tab process can consume more memory than shown here.
+                            </div>
+                          )} */}
+                          {memoryNotes && (
+                            <div style={{ fontSize: 11, color: '#d93025', marginTop: 6 }}>{memoryNotes}</div>
+                          )}
+                        </td>
+                        <td style={{ padding: '8px 12px' }}>{record.title ?? 'Untitled'}</td>
+                        <td style={{ padding: '8px 12px' }}>
+                          {canBringTabToFront(record, tabStates[record.tabId]) ? (
+                            <button
+                              type="button"
+                              onClick={() => handleBringToFront(record)}
+                              disabled={pendingFocusTabId === record.tabId}
+                              style={{
+                                fontSize: 12,
+                                padding: '6px 10px',
+                                borderRadius: 4,
+                                border: '1px solid #1a73e8',
+                                background: pendingFocusTabId === record.tabId ? '#e8f0fe' : '#1a73e8',
+                                color: pendingFocusTabId === record.tabId ? '#1a73e8' : '#fff',
+                                cursor: pendingFocusTabId === record.tabId ? 'not-allowed' : 'pointer'
+                              }}
+                            >
+                              {pendingFocusTabId === record.tabId ? 'Focusing…' : 'Bring to front'}
+                            </button>
+                          ) : (
+                            <span style={{ color: '#8a8a8a' }}>—</span>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })
+                )}
+              </tbody>
+            </table>
+          </div>
+        )}
       </section>
     </div>
   );
