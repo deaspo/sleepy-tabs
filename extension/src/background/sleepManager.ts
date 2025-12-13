@@ -36,6 +36,8 @@ const SESSION_RESUME_RESET_THRESHOLD_MS = 60 * 1000;
 const SATURATED_PROBE_RETRY_DELAY_MS = 2000;
 const RESAMPLE_DEBOUNCE_WINDOW_MS = SATURATED_PROBE_RETRY_DELAY_MS * 4;
 const MINUTE_MS = 60 * 1000;
+const PRIVILEGED_URL_PREFIXES = ['chrome://', 'edge://', 'devtools://', 'about:', 'chrome-extension://'];
+const REMINDER_BLOCKED_URL_PREFIXES = [...PRIVILEGED_URL_PREFIXES, 'file://'];
 
 interface SleepAllResult {
   attempted: number;
@@ -65,6 +67,7 @@ export class SleepManager {
   private saturatedProbeResampleWindows = new Map<number, number>();
   private reminderSnoozeTimers = new Map<number, { handle: ReturnType<typeof setTimeout>; expiresAt: number }>();
   private temporaryIgnoreTabs = new Set<number>();
+  private nonInjectableTabs = new Set<number>();
 
   async init(): Promise<void> {
     this.settings = await getSettings();
@@ -124,6 +127,11 @@ export class SleepManager {
       }
 
       const composed = state[tab.id] = this.composeTabState(tab.id, now, existing, overrides);
+      const tabUrl = tab.url ?? composed.url;
+      const supportsReminders = await this.tabSupportsReminders(tab.id, tabUrl, { probe: true });
+      if (!supportsReminders) {
+        this.suppressRemindersForTab(tab.id, composed);
+      }
       postToCompanion({ type: 'track-tab', tabId: tab.id, url: tab.url ?? undefined });
     }
     await setTabState(state);
@@ -200,6 +208,9 @@ export class SleepManager {
       this.temporaryIgnoreTabs.add(tabId);
     } else {
       this.temporaryIgnoreTabs.delete(tabId);
+      if (!state[tabId].ignored) {
+        this.nonInjectableTabs.delete(tabId);
+      }
     }
     await setTabState(state);
     this.broadcastTabStateUpdate(tabId, state[tabId]);
@@ -209,6 +220,9 @@ export class SleepManager {
     const state = await getTabState();
     const tabState = state[tabId];
     if (!tabState?.ignoredUntilNavigation) {
+      return;
+    }
+    if (this.isPrivilegedUrl(tabState.url) || this.nonInjectableTabs.has(tabId)) {
       return;
     }
     await this.setTabIgnored(tabId, false);
@@ -222,6 +236,7 @@ export class SleepManager {
     this.reminderMemoryContext.delete(tabId);
     this.cancelReminderSnooze(tabId);
     this.temporaryIgnoreTabs.delete(tabId);
+    this.nonInjectableTabs.delete(tabId);
     postToCompanion({ type: 'untrack-tab', tabId });
   }
 
@@ -243,7 +258,17 @@ export class SleepManager {
       if (!tabInfo) {
         continue;
       }
-      if (tabInfo.ignored || this.temporaryIgnoreTabs.has(tab.id)) {
+      const tabUrl = tab.url ?? tabInfo.url;
+      const supportsReminders = await this.tabSupportsReminders(tab.id, tabUrl, { probe: false });
+      if (!supportsReminders) {
+        const suppressed = this.suppressRemindersForTab(tab.id, tabInfo, { closeReminderWindow: true });
+        if (suppressed) {
+          await setTabState(state);
+          this.broadcastTabStateUpdate(tab.id, tabInfo);
+        }
+        continue;
+      }
+      if (tabInfo.ignored || this.temporaryIgnoreTabs.has(tab.id) || this.nonInjectableTabs.has(tab.id)) {
         continue;
       }
 
@@ -910,11 +935,22 @@ export class SleepManager {
     ) {
       overrides.ignored = false;
       overrides.ignoredUntilNavigation = undefined;
+      this.nonInjectableTabs.delete(tab.id);
+      this.temporaryIgnoreTabs.delete(tab.id);
     }
 
-    state[tab.id] = this.composeTabState(tab.id, now, existing, overrides);
+    const composed = this.composeTabState(tab.id, now, existing, overrides);
+    const urlToCheck = tab.url ?? composed.url;
+    const supportsReminders = await this.tabSupportsReminders(tab.id, urlToCheck, { probe: true });
+    if (!supportsReminders) {
+      this.suppressRemindersForTab(tab.id, composed, { closeReminderWindow: true });
+    } else if (!composed.ignoredUntilNavigation) {
+      this.temporaryIgnoreTabs.delete(tab.id);
+    }
+
+    state[tab.id] = composed;
     await setTabState(state);
-    this.broadcastTabStateUpdate(tab.id, state[tab.id]);
+    this.broadcastTabStateUpdate(tab.id, composed);
   }
 
   private composeTabState(
@@ -1046,6 +1082,112 @@ export class SleepManager {
     });
   }
 
+  private isPrivilegedUrl(url?: string | null): boolean {
+    if (!url) {
+      return false;
+    }
+    const candidate = url.trim().toLowerCase();
+    return PRIVILEGED_URL_PREFIXES.some((prefix) => candidate.startsWith(prefix));
+  }
+
+  private isNonInjectableError(message: string): boolean {
+    const normalized = message.toLowerCase();
+    return (
+      normalized.includes('cannot access contents of the page') ||
+      normalized.includes('cannot inject script') ||
+      normalized.includes('this page cannot be scripted') ||
+      normalized.includes('extensions gallery') ||
+      normalized.includes('the extensions page cannot be scripted') ||
+      normalized.includes('cannot access a chrome')
+    );
+  }
+
+  private extractErrorMessage(error: unknown): string | undefined {
+    if (typeof error === 'string') {
+      return error;
+    }
+    if (error instanceof Error) {
+      return error.message;
+    }
+    const runtimeError = chrome.runtime.lastError?.message;
+    if (runtimeError) {
+      return runtimeError;
+    }
+    return undefined;
+  }
+
+  private suppressRemindersForTab(tabId: number, tabState: TabState, options?: { closeReminderWindow?: boolean }): boolean {
+    let mutated = false;
+    if (!tabState.ignored) {
+      tabState.ignored = true;
+      mutated = true;
+    }
+    if (!tabState.ignoredUntilNavigation) {
+      tabState.ignoredUntilNavigation = true;
+      mutated = true;
+    }
+    if (typeof tabState.pendingReminder !== 'undefined') {
+      delete tabState.pendingReminder;
+      mutated = true;
+    }
+    if (typeof tabState.reminderSnoozedUntil === 'number') {
+      delete tabState.reminderSnoozedUntil;
+      mutated = true;
+    }
+
+    this.reminderMemoryContext.delete(tabId);
+    this.clearReminderTimeout(tabId);
+    this.cancelReminderSnooze(tabId);
+    this.temporaryIgnoreTabs.add(tabId);
+    this.nonInjectableTabs.add(tabId);
+
+    if (options?.closeReminderWindow) {
+      void this.closeExistingReminderWindow(tabId);
+    }
+
+    return mutated;
+  }
+
+  private async tabSupportsReminders(
+    tabId: number,
+    url?: string | null,
+    options?: { probe?: boolean }
+  ): Promise<boolean> {
+    if (this.isPrivilegedUrl(url)) {
+      this.nonInjectableTabs.add(tabId);
+      return false;
+    }
+
+    if (!options?.probe) {
+      return !this.nonInjectableTabs.has(tabId);
+    }
+
+    if (this.nonInjectableTabs.has(tabId)) {
+      return false;
+    }
+
+    try {
+      await chrome.scripting.executeScript({
+        target: { tabId },
+        func: () => true
+      });
+      this.nonInjectableTabs.delete(tabId);
+      return true;
+    } catch (error) {
+      const message = this.extractErrorMessage(error);
+      if (message && this.isNonInjectableError(message)) {
+        this.nonInjectableTabs.add(tabId);
+        return false;
+      }
+      if (message) {
+        console.warn('Content script probe failed unexpectedly', { tabId, message });
+      } else {
+        console.warn('Content script probe failed unexpectedly', error);
+      }
+      return true;
+    }
+  }
+
   private canInjectReminder(tab: chrome.tabs.Tab | null): boolean {
     if (!tab) {
       return false;
@@ -1054,8 +1196,8 @@ export class SleepManager {
     if (!url) {
       return false;
     }
-    const blockedSchemes = ['chrome://', 'edge://', 'about:', 'devtools://', 'file://', 'chrome-extension://'];
-    return !blockedSchemes.some((scheme) => url.startsWith(scheme));
+    const normalized = url.toLowerCase();
+    return !REMINDER_BLOCKED_URL_PREFIXES.some((scheme) => normalized.startsWith(scheme));
   }
 
   private async focusTabIfPossible(tabId: number, windowId?: number): Promise<void> {

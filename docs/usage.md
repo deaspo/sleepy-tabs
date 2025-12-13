@@ -9,6 +9,12 @@ This guide covers daily operations, configuration adjustments, and troubleshooti
 - **Dashboard (Side Panel)**: Review recent actions, highlight critical tabs, and inspect telemetry history from IndexedDB.
 - **Reminder Modal**: Appears in-page before automatic actions, offering a manual override with a countdown.
 
+### Reminder Limitations
+
+- Some pages block extensions from injecting content scripts (browser settings, extension galleries, Web Store, internal `chrome://` / `edge://` pages, etc.). Sleepy Tabs automatically suppresses reminders on these surfaces, treating them as ignored until you navigate elsewhere.
+- Suppressed tabs still show up in the dashboard for status visibility, but reminders, snoozes, and auto-actions won’t trigger until the tab navigates to a standard URL where scripting is permitted.
+- If you need reminder coverage on a domain protected by enterprise policies, request admin approval to allow content scripts or rely on manual actions from the popup/dashboard instead.
+
 ## Adjusting Settings
 
 1. Open the popup and click **Open settings**, or visit `chrome-extension://<id>/src/pages/options/index.html` directly.
