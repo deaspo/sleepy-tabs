@@ -63,7 +63,8 @@ export class SleepManager {
   >();
   private saturatedProbeRetries = new Map<number, number>();
   private saturatedProbeResampleWindows = new Map<number, number>();
-  private reminderSnoozeTimers = new Map<number, ReturnType<typeof setTimeout>>();
+  private reminderSnoozeTimers = new Map<number, { handle: ReturnType<typeof setTimeout>; expiresAt: number }>();
+  private temporaryIgnoreTabs = new Set<number>();
 
   async init(): Promise<void> {
     this.settings = await getSettings();
@@ -122,10 +123,48 @@ export class SleepManager {
         overrides.ignoredUntilNavigation = undefined;
       }
 
-      state[tab.id] = this.composeTabState(tab.id, now, existing, overrides);
+      const composed = state[tab.id] = this.composeTabState(tab.id, now, existing, overrides);
       postToCompanion({ type: 'track-tab', tabId: tab.id, url: tab.url ?? undefined });
     }
     await setTabState(state);
+    await this.restoreReminderSuppressions(state);
+  }
+
+  private async restoreReminderSuppressions(state: Record<number, TabState>): Promise<void> {
+    const now = Date.now();
+    let dirty = false;
+    const expiredSnoozeTabs: number[] = [];
+    this.temporaryIgnoreTabs.clear();
+    for (const [tabIdKey, tabState] of Object.entries(state)) {
+      const tabId = Number(tabIdKey);
+      if (!Number.isFinite(tabId)) {
+        continue;
+      }
+
+      if (tabState.reminderSnoozedUntil) {
+        if (tabState.reminderSnoozedUntil > now) {
+          this.scheduleSnoozeTimer(tabId, tabState.reminderSnoozedUntil);
+        } else {
+          delete tabState.reminderSnoozedUntil;
+          dirty = true;
+          expiredSnoozeTabs.push(tabId);
+        }
+      }
+
+      if (tabState.ignored && tabState.ignoredUntilNavigation) {
+        this.temporaryIgnoreTabs.add(tabId);
+      }
+    }
+
+    if (dirty) {
+      await setTabState(state);
+      for (const tabId of expiredSnoozeTabs) {
+        const updatedState = state[tabId];
+        if (updatedState) {
+          this.broadcastTabStateUpdate(tabId, updatedState);
+        }
+      }
+    }
   }
 
   async recordTabActivity(tabId: number): Promise<void> {
@@ -157,6 +196,11 @@ export class SleepManager {
       overrides.ignoredUntilNavigation = undefined;
     }
     state[tabId] = this.composeTabState(tabId, now, existing, overrides);
+    if (state[tabId].ignored && state[tabId].ignoredUntilNavigation) {
+      this.temporaryIgnoreTabs.add(tabId);
+    } else {
+      this.temporaryIgnoreTabs.delete(tabId);
+    }
     await setTabState(state);
     this.broadcastTabStateUpdate(tabId, state[tabId]);
   }
@@ -177,6 +221,7 @@ export class SleepManager {
     await this.closeExistingReminderWindow(tabId);
     this.reminderMemoryContext.delete(tabId);
     this.cancelReminderSnooze(tabId);
+    this.temporaryIgnoreTabs.delete(tabId);
     postToCompanion({ type: 'untrack-tab', tabId });
   }
 
@@ -195,7 +240,10 @@ export class SleepManager {
       }
 
       const tabInfo = state[tab.id];
-      if (!tabInfo || tabInfo.ignored) {
+      if (!tabInfo) {
+        continue;
+      }
+      if (tabInfo.ignored || this.temporaryIgnoreTabs.has(tab.id)) {
         continue;
       }
 
@@ -1135,26 +1183,33 @@ export class SleepManager {
     tabState.reminderSnoozedUntil = until;
     await setTabState(state);
     this.broadcastTabStateUpdate(tabId, tabState);
-    this.scheduleReminderSnooze(tabId, delayMs);
+    this.scheduleSnoozeTimer(tabId, until);
   }
 
-  private scheduleReminderSnooze(tabId: number, delayMs: number): void {
+  private cancelReminderSnooze(tabId: number): void {
+    const entry = this.reminderSnoozeTimers.get(tabId);
+    if (entry) {
+      clearTimeout(entry.handle);
+      this.reminderSnoozeTimers.delete(tabId);
+    }
+  }
+
+  private scheduleSnoozeTimer(tabId: number, expiresAt: number): void {
     this.cancelReminderSnooze(tabId);
+    const delayMs = Math.max(0, expiresAt - Date.now());
+    if (delayMs === 0) {
+      void this.evaluateTabs().catch((error) => {
+        console.warn('Failed to evaluate tabs after immediate snooze expiry', error);
+      });
+      return;
+    }
     const handle = setTimeout(() => {
       this.reminderSnoozeTimers.delete(tabId);
       void this.evaluateTabs().catch((error) => {
         console.warn('Failed to evaluate tabs after snooze expiry', error);
       });
     }, delayMs);
-    this.reminderSnoozeTimers.set(tabId, handle);
-  }
-
-  private cancelReminderSnooze(tabId: number): void {
-    const handle = this.reminderSnoozeTimers.get(tabId);
-    if (handle) {
-      clearTimeout(handle);
-      this.reminderSnoozeTimers.delete(tabId);
-    }
+    this.reminderSnoozeTimers.set(tabId, { handle, expiresAt });
   }
 
   private async launchStandaloneReminder(
