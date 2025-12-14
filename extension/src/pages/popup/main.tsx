@@ -273,7 +273,7 @@ function PopupApp(): JSX.Element {
           )}
           {state.memorySampleNotes === 'probe-saturated' && (
             <div style={{ marginTop: 4, color: '#5f6368' }}>
-              JS heap usage hit the browser limit. We are using the total heap estimate and retrying with deeper sampling.
+              JS heap usage hit the browser limit. Will capture a deeper sample shortly.
             </div>
           )}
           {state.memorySource === 'processes' && (
