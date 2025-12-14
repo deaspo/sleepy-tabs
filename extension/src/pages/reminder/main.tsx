@@ -1,8 +1,14 @@
 import { useEffect, useMemo, useState } from 'react';
 import ReactDOM from 'react-dom/client';
 
+import { DEFAULT_REMINDER_SNOOZE_MINUTES, REMINDER_SNOOZE_PRESETS } from '../../shared/constants';
 import { notifyReminderDecision } from '../../shared/messaging';
-import type { MemoryActionTarget, SleepAction, TabTelemetryRecord } from '../../shared/types';
+import type {
+  MemoryActionTarget,
+  ReminderDecisionOption,
+  SleepAction,
+  TabTelemetryRecord
+} from '../../shared/types';
 
 function useCountdown(seconds: number, onElapsed: () => void): number {
   const [remaining, setRemaining] = useState(seconds);
@@ -48,30 +54,61 @@ function ReminderApp(): JSX.Element {
     ? Number(params.get('memoryThresholdMb'))
     : undefined;
   const memoryTarget = (params.get('memoryTarget') ?? undefined) as MemoryActionTarget | undefined;
+  const memorySampleNotes = params.get('memorySampleNotes') ?? undefined;
+  const snoozeParamRaw = params.get('snoozeMinutes');
+  const snoozeParsed = snoozeParamRaw ? Number(snoozeParamRaw) : Number.NaN;
+  const configuredSnoozeMinutes = Number.isFinite(snoozeParsed) && snoozeParsed > 0 ? snoozeParsed : undefined;
+  const defaultSnoozeMinutes = configuredSnoozeMinutes ?? DEFAULT_REMINDER_SNOOZE_MINUTES;
+  const snoozeOptions = useMemo(() => {
+    const merged = new Set<number>([defaultSnoozeMinutes, ...REMINDER_SNOOZE_PRESETS]);
+    return Array.from(merged)
+      .filter((value) => value > 0)
+      .sort((a, b) => a - b);
+  }, [defaultSnoozeMinutes]);
+  const [selectedSnoozeMinutes, setSelectedSnoozeMinutes] = useState<number>(defaultSnoozeMinutes);
+  const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
 
-  const remaining = useCountdown(timeoutSeconds, () => {
-    notifyReminderDecision(tabId, action, true, reason, {
-      memoryUsageMb,
-      totalHeapMb,
-      fullPageMemoryMb,
-      heapLimitMb,
-      memoryThresholdMb,
-      memoryTarget
-    });
-    window.close();
-  });
+  useEffect(() => {
+    setSelectedSnoozeMinutes(defaultSnoozeMinutes);
+  }, [defaultSnoozeMinutes]);
 
-  const handleDecision = (proceed: boolean) => {
-    notifyReminderDecision(tabId, action, proceed, reason, {
-      memoryUsageMb,
-      totalHeapMb,
-      fullPageMemoryMb,
-      heapLimitMb,
-      memoryThresholdMb,
-      memoryTarget
-    });
-    window.close();
+  const commonMetrics = {
+    memoryUsageMb,
+    totalHeapMb,
+    fullPageMemoryMb,
+    heapLimitMb,
+    memoryThresholdMb,
+    memoryTarget,
+    memorySampleNotes
   };
+
+  const handleDecision = (decision: ReminderDecisionOption, extras?: { snoozeMinutes?: number }) => {
+    if (isSubmitting) {
+      return;
+    }
+    setIsSubmitting(true);
+    const snoozeMinutes = extras?.snoozeMinutes ?? selectedSnoozeMinutes;
+    void notifyReminderDecision(tabId, action, decision, reason, {
+      ...commonMetrics,
+      snoozeMinutes: snoozeMinutes > 0 ? snoozeMinutes : undefined
+    })
+      .catch((error) => {
+        console.warn('Failed to deliver reminder decision', error);
+      })
+      .finally(() => {
+        window.close();
+      });
+  };
+
+  const autoDecision: ReminderDecisionOption = action === 'sleep' ? 'sleep-now' : 'reload-now';
+
+  const remaining = useCountdown(timeoutSeconds, () =>
+    handleDecision(autoDecision, { snoozeMinutes: selectedSnoozeMinutes })
+  );
+
+  const primaryActionLabel = action === 'sleep' ? 'Sleep now' : 'Reload now';
+  const secondaryActionLabel = action === 'sleep' ? 'Reload now' : 'Sleep now';
+  const secondaryDecision: ReminderDecisionOption = action === 'sleep' ? 'reload-now' : 'sleep-now';
 
   return (
     <div
@@ -118,6 +155,11 @@ function ReminderApp(): JSX.Element {
               In-tab heap probes are approximate; the tab process can consume more memory than shown here.
             </div>
           )}
+          {memorySampleNotes === 'probe-saturated' && (
+            <div style={{ color: '#5f6368', marginTop: 6, fontSize: 12 }}>
+              JS heap usage hit the browser limit. Sleepy Tabs is using the total heap estimate and will capture a deeper sample shortly.
+            </div>
+          )}
           {typeof memoryThresholdMb === 'number' && (
             <div style={{ color: '#5f6368', marginTop: 6, fontSize: 12 }}>
               Configured threshold: {memoryThresholdMb.toFixed(0)} MB{' '}
@@ -128,33 +170,123 @@ function ReminderApp(): JSX.Element {
       ) : (
         <p>This tab has been inactive for a while.</p>
       )}
-      <p>We will proceed automatically in {remaining} seconds.</p>
-      <div style={{ display: 'flex', justifyContent: 'center', gap: 12 }}>
+      <p>
+        We will {action === 'sleep' ? 'sleep this tab' : 'reload this tab'} automatically in {remaining}{' '}
+        seconds if you do nothing.
+      </p>
+      <div style={{ display: 'grid', gap: 10, marginTop: 16 }}>
         <button
           type="button"
-          onClick={() => handleDecision(false)}
+          onClick={() => handleDecision('keep-active')}
+          disabled={isSubmitting}
           style={{
-            padding: '8px 16px',
+            padding: '10px 16px',
             borderRadius: 6,
             border: '1px solid #1a73e8',
             background: '#fff',
-            color: '#1a73e8'
+            color: '#1a73e8',
+            fontWeight: 600,
+            cursor: isSubmitting ? 'not-allowed' : 'pointer',
+            opacity: isSubmitting ? 0.75 : 1
           }}
         >
-          Keep active
+          Keep tab active
+        </button>
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: 8
+          }}
+        >
+          <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 14, color: '#3c4043' }}>
+            Remind me in
+            <select
+              value={selectedSnoozeMinutes}
+              onChange={(event) => setSelectedSnoozeMinutes(Number(event.target.value))}
+              disabled={isSubmitting}
+              style={{
+                padding: '6px 10px',
+                borderRadius: 6,
+                border: '1px solid #5f6368',
+                fontSize: 14,
+                cursor: isSubmitting ? 'not-allowed' : 'pointer',
+                opacity: isSubmitting ? 0.75 : 1
+              }}
+            >
+              {snoozeOptions.map((minutes) => (
+                <option key={minutes} value={minutes}>
+                  {minutes} minute{minutes === 1 ? '' : 's'}
+                </option>
+              ))}
+            </select>
+          </label>
+          <button
+            type="button"
+            onClick={() => handleDecision('snooze', { snoozeMinutes: selectedSnoozeMinutes })}
+            disabled={isSubmitting}
+            style={{
+              padding: '10px 16px',
+              borderRadius: 6,
+              border: '1px solid #5f6368',
+              background: '#fff',
+              color: '#3c4043',
+              cursor: isSubmitting ? 'not-allowed' : 'pointer',
+              opacity: isSubmitting ? 0.75 : 1
+            }}
+          >
+            Snooze
+          </button>
+        </div>
+        <button
+          type="button"
+          onClick={() => handleDecision('ignore-tab')}
+          disabled={isSubmitting}
+          style={{
+            padding: '10px 16px',
+            borderRadius: 6,
+            border: '1px solid #dadce0',
+            background: '#fff',
+            color: '#3c4043',
+            cursor: isSubmitting ? 'not-allowed' : 'pointer',
+            opacity: isSubmitting ? 0.75 : 1
+          }}
+        >
+          Ignore this tab (clears on reload)
         </button>
         <button
           type="button"
-          onClick={() => handleDecision(true)}
+          onClick={() => handleDecision(autoDecision)}
+          disabled={isSubmitting}
           style={{
-            padding: '8px 16px',
+            padding: '10px 16px',
             borderRadius: 6,
             border: 'none',
             background: '#1a73e8',
-            color: '#fff'
+            color: '#fff',
+            fontWeight: 600,
+            cursor: isSubmitting ? 'not-allowed' : 'pointer',
+            opacity: isSubmitting ? 0.75 : 1
           }}
         >
-          {action === 'sleep' ? 'Sleep now' : 'Reload now'}
+          {primaryActionLabel}
+        </button>
+        <button
+          type="button"
+          onClick={() => handleDecision(secondaryDecision)}
+          disabled={isSubmitting}
+          style={{
+            padding: '10px 16px',
+            borderRadius: 6,
+            border: '1px solid #1a1a1a',
+            background: '#fff',
+            color: '#1a1a1a',
+            cursor: isSubmitting ? 'not-allowed' : 'pointer',
+            opacity: isSubmitting ? 0.75 : 1
+          }}
+        >
+          {secondaryActionLabel}
         </button>
       </div>
     </div>

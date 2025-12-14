@@ -1,5 +1,11 @@
 export type SleepAction = 'sleep' | 'reload';
 export type MemoryActionTarget = 'active' | 'inactive';
+export type ReminderDecisionOption =
+  | 'keep-active'
+  | 'sleep-now'
+  | 'reload-now'
+  | 'snooze'
+  | 'ignore-tab';
 
 export interface SleepSettings {
   version: number;
@@ -11,6 +17,7 @@ export interface SleepSettings {
   enableFullPageSampling: boolean;
   enableProcessFallback: boolean;
   processFallbackThresholdMb: number;
+  memoryReminderSnoozeMinutes: number;
   memoryActionForActiveTab: SleepAction;
   memoryActionForInactiveTab: SleepAction;
   memoryPromptForActiveTab: boolean;
@@ -44,9 +51,12 @@ export interface TabState {
   fullPageMemoryMb?: number;
   memorySource?: TabMemorySource;
   memoryCapturedAt?: number;
+  memorySampleNotes?: string;
   processId?: number;
   processSampledAt?: number;
   processFallbackThresholdMb?: number;
+  reminderSnoozedUntil?: number;
+  ignoredUntilNavigation?: boolean;
 }
 
 export type NativeHostStatus = 'unknown' | 'connecting' | 'connected' | 'disconnected';
@@ -70,6 +80,7 @@ export interface TabTelemetryRecord {
   memoryThresholdMb?: number;
   memoryTarget?: MemoryActionTarget;
   memoryPrompted?: boolean;
+  memorySampleNotes?: string;
 }
 
 export type CompanionInboundMessage =
@@ -157,14 +168,16 @@ export interface ReminderDecisionMessage {
   type: 'reminder-decision';
   tabId: number;
   action: SleepAction;
-  proceed: boolean;
+  decision: ReminderDecisionOption;
   reason: TabTelemetryRecord['reason'];
+  snoozeMinutes?: number;
   memoryUsageMb?: number;
   totalHeapMb?: number;
   fullPageMemoryMb?: number;
   heapLimitMb?: number;
   memoryThresholdMb?: number;
   memoryTarget?: MemoryActionTarget;
+  memorySampleNotes?: string;
 }
 
 export interface ManualActionMessage {
@@ -195,6 +208,17 @@ export interface TabMemorySample {
   fullPageMemoryMb?: number;
   source: TabMemorySource;
   processId?: number;
+}
+
+export interface ResampleTabMemoryMessage {
+  type: 'resample-tab-memory';
+  tabId: number;
+}
+
+export interface ResampleDebounceMessage {
+  type: 'resample-debounce';
+  tabId: number;
+  until: number;
 }
 
 export interface TabStateUpdatedMessage {
@@ -238,5 +262,7 @@ export type RuntimeMessage =
   | SleepAllTabsMessage
   | NativeHostStatusMessage
   | TabMemoryProbeMessage
+  | ResampleTabMemoryMessage
+  | ResampleDebounceMessage
   | CapabilitiesRequestMessage
   | PingMessage;

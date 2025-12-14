@@ -2,6 +2,8 @@ import type {
   CompanionOutboundMessage,
   FocusTabResponse,
   MemoryActionTarget,
+  ReminderDecisionOption,
+  ReminderDecisionMessage,
   RuntimeMessage,
   SleepAction,
   TabState,
@@ -103,7 +105,7 @@ export function postToCompanion(message: CompanionOutboundMessage): void {
 export function notifyReminderDecision(
   tabId: number,
   action: SleepAction,
-  proceed: boolean,
+  decision: ReminderDecisionOption,
   reason: TabTelemetryRecord['reason'],
   metrics?: {
     memoryUsageMb?: number;
@@ -112,14 +114,42 @@ export function notifyReminderDecision(
     fullPageMemoryMb?: number;
     memoryThresholdMb?: number;
     memoryTarget?: MemoryActionTarget;
+    memorySampleNotes?: string;
+    snoozeMinutes?: number;
   }
-): void {
-  chrome.runtime.sendMessage({
-    type: 'reminder-decision',
+): Promise<void> {
+  const payload = {
+    type: 'reminder-decision' as const,
     tabId,
     action,
-    proceed,
+    decision,
     reason,
-    ...(metrics ?? {})
+    memoryUsageMb: metrics?.memoryUsageMb,
+    totalHeapMb: metrics?.totalHeapMb,
+    heapLimitMb: metrics?.heapLimitMb,
+    fullPageMemoryMb: metrics?.fullPageMemoryMb,
+    memoryThresholdMb: metrics?.memoryThresholdMb,
+    memoryTarget: metrics?.memoryTarget,
+    memorySampleNotes: metrics?.memorySampleNotes,
+    snoozeMinutes: metrics?.snoozeMinutes
+  } satisfies ReminderDecisionMessage;
+
+  return new Promise((resolve, reject) => {
+    chrome.runtime.sendMessage(payload, () => {
+      const error = chrome.runtime.lastError;
+      if (error) {
+        const message = error.message ?? String(error);
+        if (
+          message.includes('Receiving end does not exist') ||
+          message.includes('The message port closed before a response was received')
+        ) {
+          resolve();
+          return;
+        }
+        reject(new Error(message));
+        return;
+      }
+      resolve();
+    });
   });
 }

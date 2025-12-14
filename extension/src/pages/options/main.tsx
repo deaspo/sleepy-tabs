@@ -13,7 +13,9 @@ import {
   DEFAULT_MEMORY_PROMPT_FOR_INACTIVE_TAB,
   DEFAULT_MEMORY_THRESHOLD_MB,
   DEFAULT_PROCESS_THRESHOLD_MB,
+  DEFAULT_REMINDER_SNOOZE_MINUTES,
   DEFAULT_REMINDER_TIMEOUT_SECONDS,
+  REMINDER_SNOOZE_PRESETS,
   PROCESS_THRESHOLD_PRESETS,
   SETTINGS_VERSION
 } from '../../shared/constants';
@@ -24,6 +26,7 @@ const initialSettings: SleepSettings = {
   memoryThresholdMb: DEFAULT_MEMORY_THRESHOLD_MB,
   enableAutoSleep: true,
   reminderTimeoutSeconds: DEFAULT_REMINDER_TIMEOUT_SECONDS,
+  memoryReminderSnoozeMinutes: DEFAULT_REMINDER_SNOOZE_MINUTES,
   autoFocusOnReminder: DEFAULT_AUTO_FOCUS_ON_REMINDER,
   enableFullPageSampling: DEFAULT_ENABLE_FULL_PAGE_SAMPLING,
   enableProcessFallback: DEFAULT_ENABLE_PROCESS_FALLBACK,
@@ -66,6 +69,11 @@ function OptionsApp(): JSX.Element {
   const handleNumberChange = (key: keyof SleepSettings) => (event: ChangeEvent<HTMLInputElement>) => {
     setSettings((prev) => ({ ...prev, [key]: Number(event.target.value) }));
   };
+
+  const handleSelectNumberChange = (key: keyof SleepSettings) =>
+    (event: ChangeEvent<HTMLSelectElement>) => {
+      setSettings((prev) => ({ ...prev, [key]: Number(event.target.value) }));
+    };
 
   const handleCheckboxChange = (key: keyof SleepSettings) => (event: ChangeEvent<HTMLInputElement>) => {
     setSettings((prev) => ({ ...prev, [key]: event.target.checked }));
@@ -152,6 +160,10 @@ function OptionsApp(): JSX.Element {
             />
             <span>Show a reminder before acting on active tabs</span>
           </label>
+          <span style={{ color: '#5f6368', fontSize: 12 }}>
+            Reminders now offer Keep active, Snooze, Ignore, Sleep, and Reload choices so you can respond without
+            losing work.
+          </span>
           <label style={{ display: 'grid', gap: 4 }}>
             <span>When the tab is inactive</span>
             <select
@@ -182,6 +194,24 @@ function OptionsApp(): JSX.Element {
             onChange={handleNumberChange('reminderTimeoutSeconds')}
             style={{ padding: '8px 12px', borderRadius: 6, border: '1px solid #ccc' }}
           />
+        </label>
+
+        <label style={{ display: 'grid', gap: 4 }}>
+          <span>Snooze interval for reminders</span>
+          <select
+            value={settings.memoryReminderSnoozeMinutes}
+            onChange={handleSelectNumberChange('memoryReminderSnoozeMinutes')}
+            style={{ padding: '8px 12px', borderRadius: 6, border: '1px solid #ccc' }}
+          >
+            {REMINDER_SNOOZE_PRESETS.map((minutes) => (
+              <option key={minutes} value={minutes}>
+                {minutes} minute{minutes === 1 ? '' : 's'}
+              </option>
+            ))}
+          </select>
+          <span style={{ color: '#5f6368', fontSize: 12 }}>
+            Controls the default snooze duration in reminder popups.
+          </span>
         </label>
 
         <label style={{ display: 'flex', alignItems: 'center', gap: 12 }}>

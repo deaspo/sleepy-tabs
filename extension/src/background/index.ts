@@ -469,6 +469,9 @@ chrome.tabs.onCreated.addListener((tab) => {
 });
 
 chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
+  if (changeInfo.status === 'loading') {
+    void manager.handleTabReload(tabId);
+  }
   if (changeInfo.status === 'complete') {
     void manager.recordTabActivity(tabId);
   }
@@ -558,6 +561,17 @@ chrome.runtime.onMessage.addListener((message: RuntimeMessage, sender, sendRespo
     return false;
   }
 
+  if (message.type === 'resample-tab-memory') {
+    if (typeof message.tabId === 'number') {
+      void collectTabMemoryViaScripting(message.tabId).then((success) => {
+        if (!success) {
+          void collectTabMemoryViaDebugger(message.tabId);
+        }
+      });
+    }
+    return false;
+  }
+
   if (message.type === 'focus-tab') {
     const focusMessage = message as FocusTabMessage;
     void bringTabToFront(focusMessage)
@@ -589,14 +603,16 @@ chrome.runtime.onMessage.addListener((message: RuntimeMessage, sender, sendRespo
       .handleReminderDecision(
         reminder.tabId,
         reminder.action,
-        reminder.proceed,
+        reminder.decision,
         reminder.reason,
         reminder.memoryUsageMb,
         reminder.totalHeapMb,
         reminder.fullPageMemoryMb,
         reminder.heapLimitMb,
         reminder.memoryThresholdMb,
-        reminder.memoryTarget
+        reminder.memoryTarget,
+        reminder.memorySampleNotes,
+        reminder.snoozeMinutes
       )
       .then(() => sendResponse({ success: true }));
     return true;
