@@ -619,8 +619,8 @@ function DashboardApp(): JSX.Element {
                       <div>In-tab heap probes are approximate; the tab process can consume more memory than shown here.</div>
                     )} */}
                     {memoryTrigger && (
-                        <div style={{ fontSize: 11, color: '#5f6368', marginTop: 4 }}>{memoryTrigger}</div>
-                      )}
+                      <div style={{ fontSize: 11, color: '#5f6368', marginTop: 4 }}>{memoryTrigger}</div>
+                    )}
                     {memoryNotes && <div style={{ marginTop: 6 }}>{memoryNotes}</div>}
                   </div>
                 </li>
