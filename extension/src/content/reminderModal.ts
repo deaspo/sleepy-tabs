@@ -211,7 +211,7 @@ function renderOverlay(payload: ReminderPayload): void {
       ...commonMetrics,
       snoozeMinutes: snoozeMinutes > 0 ? snoozeMinutes : undefined
     }).catch((error) => {
-      console.warn('Sleepy Tabs: reminder decision delivery failed', error);
+      console.warn('Sleepy Tabs Guardian: reminder decision delivery failed', error);
     });
   };
 
