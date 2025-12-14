@@ -1017,9 +1017,6 @@ export class SleepManager {
     if (Math.abs(memoryUsage - heapLimit) / heapLimit > 0.001) {
       return false;
     }
-    if (typeof thresholdMb === 'number' && typeof tabState.totalHeapMb === 'number') {
-      return tabState.totalHeapMb < thresholdMb;
-    }
     return true;
   }
 

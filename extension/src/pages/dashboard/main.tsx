@@ -343,7 +343,7 @@ function DashboardApp(): JSX.Element {
 
   useLayoutEffect(() => {
     if (criticalCollapsed) {
-      setCriticalListMaxHeight((current) => (current === null ? current : null));
+      setCriticalListMaxHeight(null);
     } else {
       const listElement = criticalListRef.current;
       if (listElement) {
@@ -356,15 +356,15 @@ function DashboardApp(): JSX.Element {
           const newHeight = Math.ceil(totalHeight + gapValue * (visibleItems.length - 1));
           setCriticalListMaxHeight((current) => (current === newHeight ? current : newHeight));
         } else {
-          setCriticalListMaxHeight((current) => (current === null ? current : null));
+          setCriticalListMaxHeight(null);
         }
       } else {
-        setCriticalListMaxHeight((current) => (current === null ? current : null));
+        setCriticalListMaxHeight(null);
       }
     }
 
     if (recentCollapsed) {
-      setRecentActionsMaxHeight((current) => (current === null ? current : null));
+      setRecentActionsMaxHeight(null);
     } else {
       const recentContainer = recentActionsRef.current;
       if (recentContainer) {
@@ -378,11 +378,11 @@ function DashboardApp(): JSX.Element {
             const newHeight = Math.ceil(headerHeight + rowsHeight);
             setRecentActionsMaxHeight((current) => (current === newHeight ? current : newHeight));
           } else {
-            setRecentActionsMaxHeight((current) => (current === null ? current : null));
+            setRecentActionsMaxHeight(null);
           }
         }
       } else {
-        setRecentActionsMaxHeight((current) => (current === null ? current : null));
+        setRecentActionsMaxHeight(null);
       }
     }
   }, [criticalRecords, filteredRecords, layoutVersion, criticalCollapsed, recentCollapsed]);
@@ -615,9 +615,9 @@ function DashboardApp(): JSX.Element {
                       <div key={`${record.id ?? record.tabId}-critical-${index}`}>{line}</div>
                     ))}
                     {formatMemoryDetail(memorySample) && <div>{formatMemoryDetail(memorySample)}</div>}
-                    {/* {memorySample.memorySource === 'probe' && (
+                    {memorySample.memorySource === 'probe' && (
                       <div>In-tab heap probes are approximate; the tab process can consume more memory than shown here.</div>
-                    )} */}
+                    )}
                     {memoryTrigger && (
                       <div style={{ fontSize: 11, color: '#5f6368', marginTop: 4 }}>{memoryTrigger}</div>
                     )}
@@ -716,6 +716,11 @@ function DashboardApp(): JSX.Element {
                           {formatMemoryDetail(memorySample) && (
                             <div style={{ fontSize: 11, color: '#5f6368', marginTop: 4 }}>
                               {formatMemoryDetail(memorySample)}
+                            </div>
+                          )}
+                          {memorySample.memorySource === 'probe' && (
+                            <div style={{ fontSize: 11, color: '#5f6368', marginTop: 2 }}>
+                              In-tab heap probes are approximate; the tab process can consume more memory than shown here.
                             </div>
                           )}
                           {memoryNotes && (
