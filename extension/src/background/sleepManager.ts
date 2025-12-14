@@ -1014,7 +1014,7 @@ export class SleepManager {
     if (typeof memoryUsage !== 'number' || typeof heapLimit !== 'number') {
       return false;
     }
-    if (Math.abs(memoryUsage - heapLimit) > 0.01) {
+    if (Math.abs(memoryUsage - heapLimit) / heapLimit > 0.001) {
       return false;
     }
     if (typeof thresholdMb === 'number' && typeof tabState.totalHeapMb === 'number') {
