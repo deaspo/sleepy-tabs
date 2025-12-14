@@ -998,6 +998,9 @@ export class SleepManager {
     }
     if (!this.isProbeSaturated(tabState)) {
       return tabState.heapLimitMb ?? tabState.memoryUsageMb ?? tabState.totalHeapMb ?? undefined;
+    } else {
+      // When probe is saturated, do not return memoryUsageMb
+      return tabState.heapLimitMb ?? tabState.totalHeapMb ?? undefined;
     }
     return undefined;
   }
