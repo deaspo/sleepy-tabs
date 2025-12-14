@@ -210,7 +210,7 @@ function OptionsApp(): JSX.Element {
             ))}
           </select>
           <span style={{ color: '#5f6368', fontSize: 12 }}>
-            Controls the default for “Remind me later” inside memory popups.
+            Controls the default snooze duration in reminder popups.
           </span>
         </label>
 
