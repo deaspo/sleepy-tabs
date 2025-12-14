@@ -153,7 +153,7 @@ function renderOverlay(payload: ReminderPayload): void {
       saturatedNote.style.marginTop = '8px';
       saturatedNote.style.color = '#5f6368';
       saturatedNote.style.fontSize = '12px';
-      saturatedNote.textContent = 'JS heap usage hit the browser limit, so Sleepy Tabs is using the total heap estimate and will retry sampling.';
+      saturatedNote.textContent = 'JS heap usage hit the browser limit, so Sleepy Tabs is using the total heap estimate and will capture a deeper sample shortly.';
       metricsContainer.appendChild(saturatedNote);
     }
 
