@@ -11,7 +11,7 @@ This guide covers daily operations, configuration adjustments, and troubleshooti
 
 ### Reminder Limitations
 
-- Some pages block extensions from injecting content scripts (browser settings, extension galleries, Web Store, internal `chrome://` / `edge://` pages, etc.). Sleepy Tabs automatically suppresses reminders on these surfaces, treating them as ignored until you navigate elsewhere.
+- Browser security policies prevent content script injection on some pages (browser settings, extension galleries, Web Store, internal `chrome://` / `edge://` pages, etc.). Sleepy Tabs automatically suppresses reminders on these surfaces, treating them as ignored until you navigate elsewhere.
 - Suppressed tabs still show up in the dashboard for status visibility, but reminders, snoozes, and auto-actions won’t trigger until the tab navigates to a standard URL where scripting is permitted.
 - If you need reminder coverage on a domain protected by enterprise policies, request admin approval to allow content scripts or rely on manual actions from the popup/dashboard instead.
 
