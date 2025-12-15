@@ -24,6 +24,7 @@ This guide covers daily operations, configuration adjustments, and troubleshooti
 1. Open the popup and click **Open settings**, or visit `chrome-extension://<id>/src/pages/options/index.html` directly.
 2. Modify timeouts or thresholds. Changes persist immediately to `chrome.storage.local` and sync across sessions.
 3. Use the **High-memory tab actions** panel to pick separate behaviors for active (reminder + action) and inactive (auto sleep or reload) tabs, and toggle whether a reminder should appear first. The defaults keep a 100 MB total heap threshold tuned for in-tab probes, sleeping inactive tabs automatically and prompting before touching the active one.
+4. To revert configuration drift, use **Restore defaults** at the bottom of the page. It re-applies the shipping presets and saves them instantly.
 
 ## Understanding Tab States
 
