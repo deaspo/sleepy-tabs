@@ -286,7 +286,7 @@ export class SleepManager {
       const inactivityMs = Date.now() - tabInfo.lastActiveAt;
       const inactivityThresholdMs = settings.inactivityTimeoutMinutes * 60 * 1000;
       const shouldSleepForInactivity =
-        !isActive && settings.enableAutoSleep && inactivityMs >= inactivityThresholdMs;
+        settings.enableAutoSleep && inactivityMs >= inactivityThresholdMs;
 
       const memoryThresholdMb = settings.memoryThresholdMb ?? DEFAULT_MEMORY_THRESHOLD_MB;
       const tabStateIsSaturated = this.isProbeSaturated(tabInfo, memoryThresholdMb);

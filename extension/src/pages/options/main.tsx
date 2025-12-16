@@ -91,6 +91,21 @@ function OptionsApp(): JSX.Element {
     });
   };
 
+  const handleRestoreDefaults = () => {
+    const defaults: SleepSettings = {
+      ...initialSettings,
+      enableProcessFallback:
+        capabilities?.processFallbackSupported === false
+          ? false
+          : initialSettings.enableProcessFallback
+    };
+    setSettings(defaults);
+    chrome.runtime.sendMessage({ type: 'update-settings', payload: defaults }, () => {
+      setStatus('Defaults restored');
+      window.setTimeout(() => setStatus(''), 2000);
+    });
+  };
+
   const processFallbackSupported = capabilities?.processFallbackSupported !== false;
 
   return (
@@ -341,21 +356,38 @@ function OptionsApp(): JSX.Element {
           </div>
         )}
 
-        <button
-          type="submit"
-          style={{
-            padding: '10px 20px',
-            borderRadius: 6,
-            border: 'none',
-            background: '#1a73e8',
-            color: '#fff',
-            fontWeight: 600,
-            cursor: 'pointer'
-          }}
-        >
-          Save changes
-        </button>
-        {status && <span style={{ color: '#1a73e8' }}>{status}</span>}
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, alignItems: 'center' }}>
+          <button
+            type="submit"
+            style={{
+              padding: '10px 20px',
+              borderRadius: 6,
+              border: 'none',
+              background: '#1a73e8',
+              color: '#fff',
+              fontWeight: 600,
+              cursor: 'pointer'
+            }}
+          >
+            Save changes
+          </button>
+          <button
+            type="button"
+            onClick={handleRestoreDefaults}
+            style={{
+              padding: '9px 18px',
+              borderRadius: 6,
+              border: '1px solid #1a73e8',
+              background: '#fff',
+              color: '#1a73e8',
+              fontWeight: 600,
+              cursor: 'pointer'
+            }}
+          >
+            Restore defaults
+          </button>
+          {status && <span style={{ color: '#1a73e8' }}>{status}</span>}
+        </div>
       </form>
     </div>
   );

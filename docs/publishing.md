@@ -52,6 +52,31 @@ npm run build
    - **Unlisted** is discoverable only via direct link.
 7. Declare data usage; indicate that telemetry stays on-device unless you add cloud logging.
 
+### Listing Copy (v0.1.3)
+
+- **Short description (132 chars max):**
+   `Sleep idle tabs, tame memory hogs, and review rich telemetry—Edge-friendly reminders keep you in control.`
+- **Full description:**
+   ```
+   Sleepy Tabs Guardian keeps Chrome lean without losing your place. Automatically pause idle tabs, act on runaway memory, and review every decision in a searchable dashboard. In-page reminders give you the final say—snooze, ignore, sleep, or reload—while an optional native helper deepens telemetry.
+
+   What's new in 0.1.3:
+   - Smarter idle reminders that respect Chrome/Edge privileged pages yet still capture tab state at startup.
+   - One-click "Restore defaults" on the Options page for fast recovery after experiments.
+   - Refined documentation and onboarding guidance for administrators rolling out the extension at scale.
+
+   Key capabilities:
+   - Configurable inactivity timeout with per-tab ignore toggles.
+   - Memory thresholds with separate actions for active vs. inactive tabs.
+   - Rich telemetry stored locally in IndexedDB and surfaced in a side-panel dashboard.
+   - Optional native companion (via Chrome Native Messaging) to stream Chrome DevTools Protocol metrics when deeper insight is required.
+   ```
+- **Screenshots to highlight:**
+   1. Popup showing memory stats and manual actions.
+   2. Side panel dashboard with critical tabs and recent actions.
+   3. Reminder popup illustrating snooze/ignore choices.
+   4. Options page with Restore defaults button visible.
+
 ## 6. Configure Access (Private Listing)
 
 - For private availability, specify Google accounts or an entire Google Workspace domain.

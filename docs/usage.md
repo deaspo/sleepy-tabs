@@ -15,11 +15,16 @@ This guide covers daily operations, configuration adjustments, and troubleshooti
 - Suppressed tabs still show up in the dashboard for status visibility, but reminders, snoozes, and auto-actions won’t trigger until the tab navigates to a standard URL where scripting is permitted.
 - If you need reminder coverage on a domain protected by enterprise policies, request admin approval to allow content scripts or rely on manual actions from the popup/dashboard instead.
 
+### Startup Behavior
+
+- The session resume reset threshold stays at 60 seconds so Edge’s eager tab restoration after launch does not trigger a wave of idle reminders. Raising it closer to the inactivity timeout (for example, 5 minutes) can help treat long system sleeps as a fresh session, but it reintroduces popups on every cold start. Adjust the constant only if you prefer that trade-off.
+
 ## Adjusting Settings
 
 1. Open the popup and click **Open settings**, or visit `chrome-extension://<id>/src/pages/options/index.html` directly.
 2. Modify timeouts or thresholds. Changes persist immediately to `chrome.storage.local` and sync across sessions.
 3. Use the **High-memory tab actions** panel to pick separate behaviors for active (reminder + action) and inactive (auto sleep or reload) tabs, and toggle whether a reminder should appear first. The defaults keep a 100 MB total heap threshold tuned for in-tab probes, sleeping inactive tabs automatically and prompting before touching the active one.
+4. To revert configuration drift, use **Restore defaults** at the bottom of the page. It re-applies the shipping presets and saves them instantly.
 
 ## Understanding Tab States
 

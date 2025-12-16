@@ -3,7 +3,7 @@ import { defineManifest } from '@crxjs/vite-plugin';
 const manifest = defineManifest({
   manifest_version: 3,
   name: 'Sleepy Tabs Guardian',
-  version: '0.1.2',
+  version: '0.1.3',
   description:
     'Automatically pauses inactive tabs, refreshes memory hogs, and surfaces tab health insights with customizable controls.',
   action: {
