@@ -5,8 +5,8 @@ Sleepy Tabs Guardian helps Chrome users reclaim memory by automatically pausing 
 ## Key Capabilities
 
 - Monitor total heap usage and highlight tabs that cross configurable memory thresholds.
-- Automate actions such as sleeping, refreshing, or bookmarking depending on tab priority.
-- Provide contextual reminders with user-friendly explanations before any automation runs.
+- Automate actions such as sleeping or refreshing based on tab priority, with reliable idle reminders that avoid Chrome/Edge privileged surfaces.
+- Provide contextual reminders with user-friendly explanations before any automation runs, plus a one-click reset to factory settings when experiments go sideways.
 - Offer an optional native companion to gather additional telemetry on supported platforms.
 - Respect privacy with on-device processing and transparent storage controls.
 
