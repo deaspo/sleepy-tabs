@@ -51,6 +51,7 @@ npm run build
    - **Private** allows access only to users (or domains) you specify.
    - **Unlisted** is discoverable only via direct link.
 7. Declare data usage; indicate that telemetry stays on-device unless you add cloud logging.
+8. For existing updates, locate the listing with ID `bfgeeiahcekoeafnbjdacfdgbhehgneb` (public URL: https://chromewebstore.google.com/detail/bfgeeiahcekoeafnbjdacfdgbhehgneb) and upload the new package under **Package**.
 
 ### Listing Copy (v0.1.3)
 

@@ -12,7 +12,7 @@ Sleepy Tabs Guardian helps Chrome users reclaim memory by automatically pausing 
 
 ## Quick Start
 
-1. Install the extension from the Chrome Web Store (private or unlisted link shared with your team).
+1. Install the extension from the Chrome Web Store: https://chromewebstore.google.com/detail/bfgeeiahcekoeafnbjdacfdgbhehgneb.
 2. Pin the action popup to review tab health at a glance.
 3. Configure thresholds and automation preferences in the Options page.
 4. (Optional) Install the native companion for richer per-process telemetry when available.

@@ -45,7 +45,7 @@
 
 ## Slide 6: Call to Action
 
-- Install the extension (link)
+- Install the extension: https://chromewebstore.google.com/detail/bfgeeiahcekoeafnbjdacfdgbhehgneb
 - Register the companion (docs/getting-started.md)
 - Contribute features or telemetry insights (docs/contributing.md)
 - Share feedback and success stories

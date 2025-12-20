@@ -9,6 +9,7 @@ We want teams to feel confident deploying Sleepy Tabs Guardian. Use the resource
 
 ## Self-Service Resources
 
+- [Chrome Web Store listing](https://chromewebstore.google.com/detail/bfgeeiahcekoeafnbjdacfdgbhehgneb) for installing or sharing the latest published build.
 - [Getting Started Guide](getting-started.md) for installation prerequisites.
 - [Usage Guide](usage.md) to understand automation modes and memory thresholds.
 - [Privacy Policy](policies/privacy-policy.md) and [Terms of Use](policies/terms-of-use.md) for compliance questions.

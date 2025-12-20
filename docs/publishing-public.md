@@ -68,7 +68,7 @@ Chrome requires square icons in 128×128, 48×48, and 16×16 at `extension/publi
 
 ## 7. Create the Store Listing (Public)
 
-1. In the Developer Dashboard, click **Add new item** and upload the zipped package.
+1. In the Developer Dashboard, open the existing listing (ID `bfgeeiahcekoeafnbjdacfdgbhehgneb`, public URL https://chromewebstore.google.com/detail/bfgeeiahcekoeafnbjdacfdgbhehgneb) or click **Add new item** if you are creating a fresh variant, then upload the zipped package.
 2. Fill the listing form with the content prepared above.
 3. Set visibility to **Public**.
 4. Provide privacy policy URL, support email, and (optional) website.
